@@ -35,7 +35,7 @@ export default function EventDetailPage() {
       supabase.from("events").select("*, regions(name)").eq("id", id).single(),
       supabase.from("event_registrations").select("*, profiles:member_id(first_name, last_name, company_name, membership_level, regions(name))").eq("event_id", id),
       supabase.from("event_guests").select("*").eq("event_id", id),
-      supabase.from("event_rounds").select("*, event_tables(*, table_seats(*))").eq("event_id", id).order("round_number"),
+      supabase.from("event_rounds").select("*, event_tables(*, table_seats(*, profiles:member_id(first_name, last_name)))").eq("event_id", id).order("round_number"),
       supabase.from("seating_versions").select("*").eq("event_id", id).order("version_number", { ascending: false }),
     ]);
     setEvent(ev.data);
@@ -229,8 +229,12 @@ export default function EventDetailPage() {
                           <h4 className="font-semibold text-sm mb-2">{table.table_name || `Tafel ${table.table_number}`} <span className="text-muted-foreground font-normal">({table.table_seats?.length || 0}/{table.capacity})</span></h4>
                           {table.table_seats?.length > 0 ? (
                             <ul className="space-y-1 text-sm">
-                              {table.table_seats.map((seat: any, i: number) => (
-                                <li key={seat.id} className="text-muted-foreground">• Stoel {i + 1}</li>
+                              {table.table_seats
+                                .sort((a: any, b: any) => (a.seat_number || 0) - (b.seat_number || 0))
+                                .map((seat: any) => (
+                                <li key={seat.id} className="text-muted-foreground">
+                                  • {seat.profiles ? `${seat.profiles.first_name} ${seat.profiles.last_name}`.trim() : `Stoel ${seat.seat_number || '?'}`}
+                                </li>
                               ))}
                             </ul>
                           ) : (
