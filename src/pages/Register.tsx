@@ -7,6 +7,7 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { toast } from "sonner";
+import logo from "@/assets/logo_dkvn.png";
 
 export default function RegisterPage() {
   const [email, setEmail] = useState("");
@@ -47,8 +48,9 @@ export default function RegisterPage() {
   return (
     <div className="min-h-screen flex items-center justify-center bg-background px-4">
       <Card className="w-full max-w-md">
-        <CardHeader className="text-center">
-          <CardTitle className="text-3xl font-display">Account aanmaken</CardTitle>
+        <CardHeader className="text-center flex flex-col items-center">
+          <img src={logo} alt="De Kunst van Netwerken" className="h-20 w-20 mb-2" />
+          <CardTitle className="text-2xl font-bold">Account aanmaken</CardTitle>
           <CardDescription>Word lid van De Kunst van Netwerken</CardDescription>
         </CardHeader>
         <CardContent>

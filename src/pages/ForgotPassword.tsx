@@ -6,6 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { toast } from "sonner";
+import logo from "@/assets/logo_dkvn.png";
 
 export default function ForgotPasswordPage() {
   const [email, setEmail] = useState("");
@@ -26,8 +27,9 @@ export default function ForgotPasswordPage() {
   return (
     <div className="min-h-screen flex items-center justify-center bg-background px-4">
       <Card className="w-full max-w-md">
-        <CardHeader className="text-center">
-          <CardTitle className="text-2xl font-display">Wachtwoord vergeten</CardTitle>
+        <CardHeader className="text-center flex flex-col items-center">
+          <img src={logo} alt="De Kunst van Netwerken" className="h-20 w-20 mb-2" />
+          <CardTitle className="text-2xl font-bold">Wachtwoord vergeten</CardTitle>
           <CardDescription>We sturen een resetlink naar je e-mailadres</CardDescription>
         </CardHeader>
         <CardContent>
