@@ -37,6 +37,8 @@ export default function EventDetailPage() {
   const [selectedMember, setSelectedMember] = useState("");
   const [guestForm, setGuestForm] = useState({ first_name: "", last_name: "", email: "", company_name: "" });
   const [seatingVersions, setSeatingVersions] = useState<any[]>([]);
+  const [tableConfig, setTableConfig] = useState<{ count: number; hosts: Record<number, string> }>({ count: 0, hosts: {} });
+  const [showTableConfig, setShowTableConfig] = useState(false);
 
   // Edit state
   const [editing, setEditing] = useState(false);
@@ -162,7 +164,12 @@ export default function EventDetailPage() {
     if (!id) return;
     toast.info("Tafelindeling wordt gegenereerd...");
     try {
-      const res = await supabase.functions.invoke("generate-seating", { body: { event_id: id } });
+      const body: any = { event_id: id };
+      if (tableConfig.count > 0) body.num_tables = tableConfig.count;
+      if (Object.keys(tableConfig.hosts).length > 0) {
+        body.table_hosts = tableConfig.hosts; // { "1": memberId, "2": memberId, ... }
+      }
+      const res = await supabase.functions.invoke("generate-seating", { body });
       if (res.error) {
         const msg = res.error?.message || "Fout bij genereren";
         toast.error(msg);
@@ -460,8 +467,91 @@ export default function EventDetailPage() {
         <TabsContent value="seating" className="space-y-4">
           <div className="flex gap-2">
             <Button size="sm" onClick={addRound}><Plus size={14} className="mr-1" />Ronde toevoegen</Button>
-            <Button size="sm" variant="outline" onClick={generateSeating}><Sparkles size={14} className="mr-1" />Genereer indeling</Button>
+            <Button size="sm" variant="outline" onClick={() => {
+              const activeAttendees = registrations.filter(r => ["aangemeld", "bevestigd", "aanwezig"].includes(r.status));
+              if (activeAttendees.length === 0) { toast.error("Voeg eerst deelnemers toe"); return; }
+              if (rounds.length === 0) { toast.error("Voeg eerst rondes toe"); return; }
+              if (tableConfig.count === 0) {
+                setTableConfig(prev => ({ ...prev, count: Math.max(1, Math.ceil(activeAttendees.length / 8)) }));
+              }
+              setShowTableConfig(true);
+            }}><Sparkles size={14} className="mr-1" />Genereer indeling</Button>
           </div>
+
+          {/* Table configuration dialog */}
+          <Dialog open={showTableConfig} onOpenChange={setShowTableConfig}>
+            <DialogContent className="max-w-lg max-h-[80vh] overflow-y-auto">
+              <DialogHeader><DialogTitle className="font-display">Tafelindeling configureren</DialogTitle></DialogHeader>
+              <div className="space-y-4">
+                <div className="space-y-2">
+                  <Label>Aantal tafels</Label>
+                  <Input
+                    type="number"
+                    min={1}
+                    max={50}
+                    value={tableConfig.count}
+                    onChange={e => {
+                      const count = Math.max(1, parseInt(e.target.value) || 1);
+                      setTableConfig(prev => {
+                        const hosts: Record<number, string> = {};
+                        for (let i = 1; i <= count; i++) {
+                          if (prev.hosts[i]) hosts[i] = prev.hosts[i];
+                        }
+                        return { count, hosts };
+                      });
+                    }}
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    {registrations.filter(r => ["aangemeld", "bevestigd", "aanwezig"].includes(r.status)).length} actieve deelnemers
+                    → ca. {tableConfig.count > 0 ? Math.ceil(registrations.filter(r => ["aangemeld", "bevestigd", "aanwezig"].includes(r.status)).length / tableConfig.count) : 0} per tafel
+                  </p>
+                </div>
+
+                <div className="space-y-3">
+                  <Label>Tafelvoorzitters (optioneel)</Label>
+                  {Array.from({ length: tableConfig.count }, (_, i) => i + 1).map(tableNum => {
+                    const activeRegs = registrations.filter(r => ["aangemeld", "bevestigd", "aanwezig"].includes(r.status));
+                    const assignedHostIds = Object.entries(tableConfig.hosts)
+                      .filter(([num]) => Number(num) !== tableNum)
+                      .map(([, id]) => id);
+                    const availableMembers = activeRegs.filter(r => !assignedHostIds.includes(r.member_id));
+
+                    return (
+                      <div key={tableNum} className="flex items-center gap-3">
+                        <span className="text-sm font-medium w-16 shrink-0">Tafel {tableNum}</span>
+                        <Select
+                          value={tableConfig.hosts[tableNum] || "none"}
+                          onValueChange={v => setTableConfig(prev => {
+                            const hosts = { ...prev.hosts };
+                            if (v === "none") delete hosts[tableNum];
+                            else hosts[tableNum] = v;
+                            return { ...prev, hosts };
+                          })}
+                        >
+                          <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="Geen voorzitter" /></SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="none">Geen voorzitter</SelectItem>
+                            {availableMembers.map(r => (
+                              <SelectItem key={r.member_id} value={r.member_id}>
+                                {r.profiles?.first_name} {r.profiles?.last_name} {r.profiles?.company_name ? `(${r.profiles.company_name})` : ""}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    );
+                  })}
+                </div>
+
+                <Button className="w-full" onClick={() => {
+                  setShowTableConfig(false);
+                  generateSeating();
+                }}>
+                  <Sparkles size={14} className="mr-2" />Indeling genereren
+                </Button>
+              </div>
+            </DialogContent>
+          </Dialog>
 
           {rounds.length === 0 ? (
             <Card><CardContent className="py-8 text-center text-muted-foreground">Nog geen rondes aangemaakt. Voeg rondes toe om tafelindelingen te genereren.</CardContent></Card>
@@ -474,14 +564,21 @@ export default function EventDetailPage() {
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                       {round.event_tables.map((table: any) => (
                         <div key={table.id} className="border rounded-lg p-4 bg-muted/30">
-                          <h4 className="font-semibold text-sm mb-2">{table.table_name || `Tafel ${table.table_number}`} <span className="text-muted-foreground font-normal">({table.table_seats?.length || 0}/{table.capacity})</span></h4>
+                          <h4 className="font-semibold text-sm mb-2">
+                            {table.table_name || `Tafel ${table.table_number}`}
+                            <span className="text-muted-foreground font-normal ml-1">({table.table_seats?.length || 0}/{table.capacity})</span>
+                            {table.host_member_id && (
+                              <span className="ml-2 text-xs bg-primary/10 text-primary px-1.5 py-0.5 rounded">Voorzitter</span>
+                            )}
+                          </h4>
                           {table.table_seats?.length > 0 ? (
                             <ul className="space-y-1 text-sm">
                               {table.table_seats
                                 .sort((a: any, b: any) => (a.seat_number || 0) - (b.seat_number || 0))
                                 .map((seat: any) => (
-                                <li key={seat.id} className="text-muted-foreground">
+                                <li key={seat.id} className={cn("text-muted-foreground", seat.member_id === table.host_member_id && "font-semibold text-foreground")}>
                                   • {seat.profiles ? `${seat.profiles.first_name} ${seat.profiles.last_name}`.trim() : `Stoel ${seat.seat_number || '?'}`}
+                                  {seat.member_id === table.host_member_id && " ★"}
                                 </li>
                               ))}
                             </ul>
