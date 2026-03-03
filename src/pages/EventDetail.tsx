@@ -742,9 +742,9 @@ export default function EventDetailPage() {
           ) : (
             rounds.map(round => (
               <Card key={round.id}>
-                <CardHeader className="flex flex-row items-center justify-between space-y-0">
+                <CardHeader className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
                   <CardTitle className="text-lg font-display">{round.name || `Ronde ${round.round_number}`}</CardTitle>
-                  <div className="flex gap-1">
+                  <div className="flex gap-1 flex-wrap">
                     <Button
                       size="sm"
                       variant="outline"
