@@ -39,6 +39,7 @@ export default function EventDetailPage() {
   const [selectedMember, setSelectedMember] = useState("");
   const [guestForm, setGuestForm] = useState({ first_name: "", last_name: "", email: "", company_name: "" });
   const [memberSearch, setMemberSearch] = useState("");
+  const [attendeeSearch, setAttendeeSearch] = useState("");
   const [seatingVersions, setSeatingVersions] = useState<any[]>([]);
   const [configRoundId, setConfigRoundId] = useState<string | null>(null);
   const [tableConfig, setTableConfig] = useState<{ count: number; hosts: Record<number, string>; fixedMembers: Record<number, string[]> }>({ count: 0, hosts: {}, fixedMembers: {} });
@@ -163,6 +164,18 @@ export default function EventDetailPage() {
     const { error } = await supabase.from("event_rounds").insert({ event_id: id, round_number: nextNum, name: `Ronde ${nextNum}` });
     if (error) toast.error(error.message);
     else { toast.success(`Ronde ${nextNum} toegevoegd`); fetchAll(); }
+  };
+
+  const deleteRegistration = async (regId: string) => {
+    const { error } = await supabase.from("event_registrations").delete().eq("id", regId);
+    if (error) toast.error(error.message);
+    else fetchAll();
+  };
+
+  const deleteGuest = async (guestId: string) => {
+    const { error } = await supabase.from("event_guests").delete().eq("id", guestId);
+    if (error) toast.error(error.message);
+    else fetchAll();
   };
 
   const resetRound = async (roundId: string) => {
@@ -456,6 +469,15 @@ export default function EventDetailPage() {
             </Dialog>
           </div>
 
+          <div className="relative max-w-sm">
+            <Input
+              value={attendeeSearch}
+              onChange={e => setAttendeeSearch(e.target.value)}
+              placeholder="Zoek deelnemers..."
+              className="h-9"
+            />
+          </div>
+
           <Card>
             <CardHeader><CardTitle className="text-sm font-semibold">Leden ({registrations.length})</CardTitle></CardHeader>
             <CardContent className="p-0">
@@ -470,21 +492,41 @@ export default function EventDetailPage() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {registrations.map(r => (
+                  {registrations
+                    .filter(r => {
+                      if (!attendeeSearch.trim()) return true;
+                      const q = attendeeSearch.toLowerCase();
+                      return `${r.profiles?.first_name} ${r.profiles?.last_name} ${r.profiles?.company_name || ""}`.toLowerCase().includes(q);
+                    })
+                    .map(r => (
                     <TableRow key={r.id}>
                       <TableCell className="font-medium">{r.profiles?.first_name} {r.profiles?.last_name}</TableCell>
                       <TableCell className="text-muted-foreground">{r.profiles?.company_name || "—"}</TableCell>
                       <TableCell>{r.profiles?.membership_level && <MembershipBadge level={r.profiles.membership_level} />}</TableCell>
                       <TableCell><StatusBadge status={r.status} /></TableCell>
                       <TableCell>
-                        <Select value={r.status} onValueChange={v => updateStatus(r.id, v)}>
-                          <SelectTrigger className="w-[130px] h-8 text-xs"><SelectValue /></SelectTrigger>
-                          <SelectContent>
-                            {["aangemeld","bevestigd","aanwezig","afgemeld","no_show"].map(s => (
-                              <SelectItem key={s} value={s} className="text-xs capitalize">{s.replace("_"," ")}</SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
+                        <div className="flex items-center gap-1">
+                          <Select value={r.status} onValueChange={v => updateStatus(r.id, v)}>
+                            <SelectTrigger className="w-[120px] h-8 text-xs"><SelectValue /></SelectTrigger>
+                            <SelectContent>
+                              {["aangemeld","bevestigd","aanwezig","afgemeld","no_show"].map(s => (
+                                <SelectItem key={s} value={s} className="text-xs capitalize">{s.replace("_"," ")}</SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            className="h-8 w-8 p-0 text-destructive hover:text-destructive hover:bg-destructive/10"
+                            onClick={() => {
+                              if (confirm(`${r.profiles?.first_name} ${r.profiles?.last_name} verwijderen uit dit event?`)) {
+                                deleteRegistration(r.id);
+                              }
+                            }}
+                          >
+                            <Trash2 size={14} />
+                          </Button>
+                        </div>
                       </TableCell>
                     </TableRow>
                   ))}
@@ -498,14 +540,34 @@ export default function EventDetailPage() {
               <CardHeader><CardTitle className="text-sm font-semibold">Gasten ({guests.length})</CardTitle></CardHeader>
               <CardContent className="p-0">
                 <Table>
-                  <TableHeader><TableRow><TableHead>Naam</TableHead><TableHead>Bedrijf</TableHead><TableHead>E-mail</TableHead><TableHead>Status</TableHead></TableRow></TableHeader>
+                  <TableHeader><TableRow><TableHead>Naam</TableHead><TableHead>Bedrijf</TableHead><TableHead>E-mail</TableHead><TableHead>Status</TableHead><TableHead></TableHead></TableRow></TableHeader>
                   <TableBody>
-                    {guests.map(g => (
+                    {guests
+                      .filter(g => {
+                        if (!attendeeSearch.trim()) return true;
+                        const q = attendeeSearch.toLowerCase();
+                        return `${g.first_name} ${g.last_name} ${g.company_name || ""} ${g.email || ""}`.toLowerCase().includes(q);
+                      })
+                      .map(g => (
                       <TableRow key={g.id}>
                         <TableCell className="font-medium">{g.first_name} {g.last_name}</TableCell>
                         <TableCell className="text-muted-foreground">{g.company_name || "—"}</TableCell>
                         <TableCell className="text-muted-foreground">{g.email || "—"}</TableCell>
                         <TableCell><StatusBadge status={g.status} /></TableCell>
+                        <TableCell>
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            className="h-8 w-8 p-0 text-destructive hover:text-destructive hover:bg-destructive/10"
+                            onClick={() => {
+                              if (confirm(`${g.first_name} ${g.last_name} verwijderen uit dit event?`)) {
+                                deleteGuest(g.id);
+                              }
+                            }}
+                          >
+                            <Trash2 size={14} />
+                          </Button>
+                        </TableCell>
                       </TableRow>
                     ))}
                   </TableBody>
