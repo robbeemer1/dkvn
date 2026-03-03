@@ -23,6 +23,7 @@ import EventAgenda from "@/components/EventAgenda";
 import EventTodos from "@/components/EventTodos";
 import PasteAttendees from "@/components/PasteAttendees";
 import SearchableSelect from "@/components/SearchableSelect";
+import ConfirmDialog from "@/components/ConfirmDialog";
 
 export default function EventDetailPage() {
   const { id } = useParams<{ id: string }>();
@@ -43,6 +44,7 @@ export default function EventDetailPage() {
   const [seatingVersions, setSeatingVersions] = useState<any[]>([]);
   const [configRoundId, setConfigRoundId] = useState<string | null>(null);
   const [tableConfig, setTableConfig] = useState<{ count: number; hosts: Record<number, string>; fixedMembers: Record<number, string[]> }>({ count: 0, hosts: {}, fixedMembers: {} });
+  const [confirmAction, setConfirmAction] = useState<{ title: string; description: string; onConfirm: () => void } | null>(null);
 
   // Edit state
   const [editing, setEditing] = useState(false);
@@ -518,11 +520,11 @@ export default function EventDetailPage() {
                             size="sm"
                             variant="ghost"
                             className="h-8 w-8 p-0 text-destructive hover:text-destructive hover:bg-destructive/10"
-                            onClick={() => {
-                              if (confirm(`${r.profiles?.first_name} ${r.profiles?.last_name} verwijderen uit dit event?`)) {
-                                deleteRegistration(r.id);
-                              }
-                            }}
+                            onClick={() => setConfirmAction({
+                              title: "Deelnemer verwijderen",
+                              description: `Weet je zeker dat je ${r.profiles?.first_name} ${r.profiles?.last_name} wilt verwijderen uit dit event?`,
+                              onConfirm: () => deleteRegistration(r.id),
+                            })}
                           >
                             <Trash2 size={14} />
                           </Button>
@@ -559,11 +561,11 @@ export default function EventDetailPage() {
                             size="sm"
                             variant="ghost"
                             className="h-8 w-8 p-0 text-destructive hover:text-destructive hover:bg-destructive/10"
-                            onClick={() => {
-                              if (confirm(`${g.first_name} ${g.last_name} verwijderen uit dit event?`)) {
-                                deleteGuest(g.id);
-                              }
-                            }}
+                            onClick={() => setConfirmAction({
+                              title: "Gast verwijderen",
+                              description: `Weet je zeker dat je ${g.first_name} ${g.last_name} wilt verwijderen uit dit event?`,
+                              onConfirm: () => deleteGuest(g.id),
+                            })}
                           >
                             <Trash2 size={14} />
                           </Button>
@@ -745,11 +747,11 @@ export default function EventDetailPage() {
                       size="sm"
                       variant="ghost"
                       className="h-7 px-2 text-xs text-muted-foreground hover:text-foreground"
-                      onClick={() => {
-                        if (confirm(`Weet je zeker dat je alle tafels en stoelen van "${round.name || `Ronde ${round.round_number}`}" wilt resetten?`)) {
-                          resetRound(round.id);
-                        }
-                      }}
+                      onClick={() => setConfirmAction({
+                        title: "Ronde resetten",
+                        description: `Weet je zeker dat je alle tafels en stoelen van "${round.name || `Ronde ${round.round_number}`}" wilt resetten?`,
+                        onConfirm: () => resetRound(round.id),
+                      })}
                     >
                       <RotateCcw size={13} className="mr-1" />Reset
                     </Button>
@@ -757,11 +759,11 @@ export default function EventDetailPage() {
                       size="sm"
                       variant="ghost"
                       className="h-7 px-2 text-xs text-destructive hover:text-destructive hover:bg-destructive/10"
-                      onClick={() => {
-                        if (confirm(`Weet je zeker dat je "${round.name || `Ronde ${round.round_number}`}" volledig wilt verwijderen?`)) {
-                          deleteRound(round.id);
-                        }
-                      }}
+                      onClick={() => setConfirmAction({
+                        title: "Ronde verwijderen",
+                        description: `Weet je zeker dat je "${round.name || `Ronde ${round.round_number}`}" volledig wilt verwijderen?`,
+                        onConfirm: () => deleteRound(round.id),
+                      })}
                     >
                       <Trash2 size={13} className="mr-1" />Verwijderen
                     </Button>
@@ -866,6 +868,17 @@ export default function EventDetailPage() {
           )}
         </TabsContent>
       </Tabs>
+
+      <ConfirmDialog
+        open={confirmAction !== null}
+        onOpenChange={open => { if (!open) setConfirmAction(null); }}
+        title={confirmAction?.title || ""}
+        description={confirmAction?.description || ""}
+        onConfirm={() => {
+          confirmAction?.onConfirm();
+          setConfirmAction(null);
+        }}
+      />
     </div>
   );
 }
