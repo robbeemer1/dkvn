@@ -326,10 +326,12 @@ export default function MemberDetailPage() {
         onConfirm={async () => {
           if (!id) return;
           setDeleting(true);
-          const { error } = await supabase.from("profiles").delete().eq("id", id);
+          const { error, count } = await supabase.from("profiles").delete({ count: "exact" }).eq("id", id);
           setDeleting(false);
           if (error) {
             toast.error(error.message);
+          } else if (count === 0) {
+            toast.error("Verwijderen mislukt: je hebt onvoldoende rechten.");
           } else {
             toast.success("Lid verwijderd");
             navigate("/members");
