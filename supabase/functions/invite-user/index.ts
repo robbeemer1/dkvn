@@ -46,7 +46,7 @@ Deno.serve(async (req) => {
       });
     }
 
-    const { email, role } = await req.json();
+    const { email, role, forceReinvite } = await req.json();
     if (!email) {
       return new Response(JSON.stringify({ error: "E-mailadres is verplicht" }), {
         status: 400,
@@ -54,24 +54,44 @@ Deno.serve(async (req) => {
       });
     }
 
-    // Check if user already exists
+    const normalizedEmail = email.trim().toLowerCase();
+
+    // Check if user already exists in profiles
     const { data: existingProfile } = await adminClient
       .from("profiles")
       .select("id")
-      .eq("email", email.trim().toLowerCase())
+      .eq("email", normalizedEmail)
       .maybeSingle();
 
-    if (existingProfile) {
+    if (existingProfile && !forceReinvite) {
       return new Response(JSON.stringify({ error: "exists", user_id: existingProfile.id }), {
         status: 200,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
+    // If forceReinvite or user exists in auth but not profiles, clean up old auth user
+    if (existingProfile) {
+      // Delete old profile and auth user so we can re-invite cleanly
+      await adminClient.from("user_roles").delete().eq("user_id", existingProfile.id);
+      await adminClient.from("profiles").delete().eq("id", existingProfile.id);
+      await adminClient.auth.admin.deleteUser(existingProfile.id);
+    } else {
+      // Profile doesn't exist but auth user might (edge case)
+      // Try to find auth user by email and clean up
+      const { data: { users } } = await adminClient.auth.admin.listUsers();
+      const existingAuthUser = users?.find(u => u.email === normalizedEmail);
+      if (existingAuthUser) {
+        await adminClient.from("user_roles").delete().eq("user_id", existingAuthUser.id);
+        await adminClient.from("profiles").delete().eq("id", existingAuthUser.id);
+        await adminClient.auth.admin.deleteUser(existingAuthUser.id);
+      }
+    }
+
     // Invite user - this sends an invitation email
     const redirectUrl = req.headers.get("origin") || req.headers.get("referer")?.replace(/\/[^/]*$/, "") || "https://dkvn.lovable.app";
     
-    const { data: inviteData, error: inviteError } = await adminClient.auth.admin.inviteUserByEmail(email.trim().toLowerCase(), {
+    const { data: inviteData, error: inviteError } = await adminClient.auth.admin.inviteUserByEmail(normalizedEmail, {
       redirectTo: `${redirectUrl}/reset-password`,
     });
 

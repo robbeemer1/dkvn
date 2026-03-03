@@ -95,7 +95,7 @@ export default function OrgMembers() {
       .maybeSingle();
 
     if (profile) {
-      // User exists — just add role
+      // User exists — check if they already have this role
       const existing = members.find(m => m.user_id === profile.id && m.role === inviteRole);
       if (existing) {
         toast.error("Deze gebruiker heeft deze rol al.");
@@ -103,16 +103,46 @@ export default function OrgMembers() {
         return;
       }
 
-      const { error } = await supabase.from("user_roles").insert({
-        user_id: profile.id,
-        role: inviteRole,
-      } as any);
+      // Check if user has ANY org role currently
+      const hasAnyRole = members.some(m => m.user_id === profile.id);
+      if (hasAnyRole) {
+        // Active org member — just add the new role
+        const { error } = await supabase.from("user_roles").insert({
+          user_id: profile.id,
+          role: inviteRole,
+        } as any);
 
-      if (error) toast.error(error.message);
-      else {
-        toast.success("Organisatielid toegevoegd");
-        setInviteEmail("");
-        fetchMembers();
+        if (error) toast.error(error.message);
+        else {
+          toast.success("Organisatielid toegevoegd");
+          setInviteEmail("");
+          fetchMembers();
+        }
+        setAdding(false);
+        return;
+      }
+
+      // Profile exists but no org roles — this is a previously removed user
+      // Force re-invite to send a new welcome email
+      try {
+        const { data, error } = await supabase.functions.invoke("invite-user", {
+          body: { email, role: inviteRole, forceReinvite: true },
+        });
+
+        if (error) {
+          toast.error("Fout bij uitnodigen: " + error.message);
+        } else if (data?.error) {
+          toast.error(data.error);
+        } else {
+          toast.success("Uitnodiging verstuurd! De gebruiker ontvangt een e-mail om een wachtwoord aan te maken.", {
+            icon: <Mail size={16} />,
+            duration: 5000,
+          });
+          setInviteEmail("");
+          fetchMembers();
+        }
+      } catch (err: any) {
+        toast.error("Fout bij uitnodigen: " + (err.message || "Onbekende fout"));
       }
       setAdding(false);
       return;
