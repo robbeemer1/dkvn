@@ -22,13 +22,13 @@ export function AppSidebar() {
   return (
     <aside className={cn(
       "flex flex-col bg-sidebar text-sidebar-foreground border-r border-sidebar-border transition-all duration-300 h-screen sticky top-0",
-      collapsed ? "w-16" : "w-64"
+      collapsed ? "w-16" : "w-80"
     )}>
       <div className="flex items-center justify-between p-4 border-b border-sidebar-border">
         {!collapsed ? (
           <div className="flex items-center gap-2 min-w-0">
             <img src={logo} alt="De Kunst van Netwerken" className="h-9 w-9 flex-shrink-0 rounded" />
-            <span className="text-sm font-bold text-sidebar-primary truncate">Kunst van Netwerken</span>
+            <span className="text-sm font-bold text-sidebar-primary truncate">De Kunst van Netwerken</span>
           </div>
         ) : (
           <img src={logo} alt="De Kunst van Netwerken" className="h-8 w-8 rounded mx-auto" />
