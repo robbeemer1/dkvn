@@ -14,7 +14,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Calendar } from "@/components/ui/calendar";
 import { MembershipBadge, StatusBadge, RegionBadge } from "@/components/Badges";
-import { ArrowLeft, Plus, UserPlus, Sparkles, CalendarIcon, Save, Pencil } from "lucide-react";
+import { ArrowLeft, Plus, UserPlus, Sparkles, CalendarIcon, Save, Pencil, Trash2, RotateCcw } from "lucide-react";
 import { toast } from "sonner";
 import { format } from "date-fns";
 import { nl } from "date-fns/locale";
@@ -163,6 +163,31 @@ export default function EventDetailPage() {
     const { error } = await supabase.from("event_rounds").insert({ event_id: id, round_number: nextNum, name: `Ronde ${nextNum}` });
     if (error) toast.error(error.message);
     else { toast.success(`Ronde ${nextNum} toegevoegd`); fetchAll(); }
+  };
+
+  const resetRound = async (roundId: string) => {
+    // Delete all seats for all tables in this round, then delete the tables
+    const { data: tables } = await supabase.from("event_tables").select("id").eq("round_id", roundId);
+    if (tables && tables.length > 0) {
+      const tableIds = tables.map(t => t.id);
+      await supabase.from("table_seats").delete().in("table_id", tableIds);
+      await supabase.from("event_tables").delete().eq("round_id", roundId);
+    }
+    toast.success("Ronde gereset — tafels en stoelen verwijderd");
+    fetchAll();
+  };
+
+  const deleteRound = async (roundId: string) => {
+    // Delete seats → tables → round
+    const { data: tables } = await supabase.from("event_tables").select("id").eq("round_id", roundId);
+    if (tables && tables.length > 0) {
+      const tableIds = tables.map(t => t.id);
+      await supabase.from("table_seats").delete().in("table_id", tableIds);
+      await supabase.from("event_tables").delete().eq("round_id", roundId);
+    }
+    const { error } = await supabase.from("event_rounds").delete().eq("id", roundId);
+    if (error) toast.error(error.message);
+    else { toast.success("Ronde verwijderd"); fetchAll(); }
   };
 
   const generateSeating = async () => {
@@ -632,7 +657,35 @@ export default function EventDetailPage() {
           ) : (
             rounds.map(round => (
               <Card key={round.id}>
-                <CardHeader><CardTitle className="text-lg font-display">{round.name || `Ronde ${round.round_number}`}</CardTitle></CardHeader>
+                <CardHeader className="flex flex-row items-center justify-between space-y-0">
+                  <CardTitle className="text-lg font-display">{round.name || `Ronde ${round.round_number}`}</CardTitle>
+                  <div className="flex gap-1">
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className="h-7 px-2 text-xs text-muted-foreground hover:text-foreground"
+                      onClick={() => {
+                        if (confirm(`Weet je zeker dat je alle tafels en stoelen van "${round.name || `Ronde ${round.round_number}`}" wilt resetten?`)) {
+                          resetRound(round.id);
+                        }
+                      }}
+                    >
+                      <RotateCcw size={13} className="mr-1" />Reset
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className="h-7 px-2 text-xs text-destructive hover:text-destructive hover:bg-destructive/10"
+                      onClick={() => {
+                        if (confirm(`Weet je zeker dat je "${round.name || `Ronde ${round.round_number}`}" volledig wilt verwijderen?`)) {
+                          deleteRound(round.id);
+                        }
+                      }}
+                    >
+                      <Trash2 size={13} className="mr-1" />Verwijderen
+                    </Button>
+                  </div>
+                </CardHeader>
                 <CardContent>
                   {round.event_tables?.length > 0 ? (
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
