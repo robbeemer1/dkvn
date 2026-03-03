@@ -430,12 +430,6 @@ export default function EventDetailPage() {
 
         <TabsContent value="attendees" className="space-y-4">
           <div className="flex gap-2 flex-wrap">
-            <Button size="sm" variant="outline" onClick={() => {
-              const eventInfo = `${event.regions?.name || ""} · ${new Date(event.event_date).toLocaleDateString("nl-NL", { weekday: "long", day: "numeric", month: "long", year: "numeric" })}${event.location_name ? ` · ${event.location_name}` : ""}`;
-              printAttendeesPdf(event.title, eventInfo, registrations, guests);
-            }}>
-              <Printer size={14} className="mr-1" />PDF
-            </Button>
             <Dialog open={addMemberDialog} onOpenChange={setAddMemberDialog}>
               <DialogTrigger asChild><Button size="sm"><UserPlus size={14} className="mr-1" />Lid toevoegen</Button></DialogTrigger>
               <DialogContent>
@@ -476,6 +470,12 @@ export default function EventDetailPage() {
                 </form>
               </DialogContent>
             </Dialog>
+            <Button size="sm" variant="outline" onClick={() => {
+              const eventInfo = `${event.regions?.name || ""} · ${new Date(event.event_date).toLocaleDateString("nl-NL", { weekday: "long", day: "numeric", month: "long", year: "numeric" })}${event.location_name ? ` · ${event.location_name}` : ""}`;
+              printAttendeesPdf(event.title, eventInfo, registrations, guests);
+            }}>
+              <Printer size={14} className="mr-1" />PDF
+            </Button>
           </div>
 
           <div className="relative max-w-sm">
