@@ -10,7 +10,7 @@ serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
   try {
-    const { event_id, num_tables, table_hosts = {}, table_fixed_members = {} } = await req.json();
+    const { event_id, round_id, num_tables, table_hosts = {}, table_fixed_members = {} } = await req.json();
     if (!event_id) throw new Error("event_id is required");
 
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
@@ -36,12 +36,20 @@ serve(async (req) => {
 
     if (totalAttendees === 0) throw new Error("Geen deelnemers gevonden");
 
-    // Get rounds
-    const { data: rounds } = await supabase
+    // Get rounds (single round if round_id provided, else all)
+    let roundsQuery = supabase
       .from("event_rounds")
       .select("*")
       .eq("event_id", event_id)
       .order("round_number");
+    if (round_id) {
+      roundsQuery = supabase
+        .from("event_rounds")
+        .select("*")
+        .eq("id", round_id)
+        .order("round_number");
+    }
+    const { data: rounds } = await roundsQuery;
 
     if (!rounds || rounds.length === 0) throw new Error("Geen rondes gevonden. Voeg eerst rondes toe.");
 
