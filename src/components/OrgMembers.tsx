@@ -212,6 +212,25 @@ export default function OrgMembers() {
     else { toast.success("Organisatielid verwijderd"); fetchMembers(); }
   };
 
+  const resendInvite = async (m: OrgMember) => {
+    if (!m.email) { toast.error("Geen e-mailadres beschikbaar"); return; }
+    try {
+      const { data, error } = await supabase.functions.invoke("invite-user", {
+        body: { email: m.email, role: m.role, forceReinvite: true },
+      });
+      if (error) {
+        toast.error("Fout bij versturen: " + error.message);
+      } else if (data?.error) {
+        toast.error(data.error);
+      } else {
+        toast.success("Uitnodiging opnieuw verstuurd!", { icon: <Mail size={16} />, duration: 5000 });
+        fetchMembers();
+      }
+    } catch (err: any) {
+      toast.error("Fout bij versturen: " + (err.message || "Onbekende fout"));
+    }
+  };
+
   return (
     <>
       <Card>
@@ -255,7 +274,7 @@ export default function OrgMembers() {
 
           {/* Members list */}
           <div className="border rounded-lg overflow-hidden">
-            <div className="grid grid-cols-[1fr_1fr_160px_40px] gap-2 px-4 py-2 bg-muted/50 text-xs font-medium text-muted-foreground border-b">
+            <div className="grid grid-cols-[1fr_1fr_160px_64px] gap-2 px-4 py-2 bg-muted/50 text-xs font-medium text-muted-foreground border-b">
               <span>Naam</span>
               <span>E-mail</span>
               <span>Rol</span>
@@ -268,7 +287,7 @@ export default function OrgMembers() {
             ) : (
               <div className="divide-y">
                 {members.map(m => (
-                  <div key={m.id} className="grid grid-cols-[1fr_1fr_160px_40px] gap-2 px-4 py-3 items-center group hover:bg-muted/20">
+                  <div key={m.id} className="grid grid-cols-[1fr_1fr_160px_64px] gap-2 px-4 py-3 items-center group hover:bg-muted/20">
                     <div className="flex items-center gap-2 min-w-0">
                       <span className="text-sm font-medium truncate">
                         {m.first_name || m.last_name ? `${m.first_name} ${m.last_name}`.trim() : <span className="text-muted-foreground italic">Uitgenodigd</span>}
@@ -285,14 +304,25 @@ export default function OrgMembers() {
                         ))}
                       </SelectContent>
                     </Select>
-                    <Button variant="ghost" size="icon" className="h-7 w-7 opacity-0 group-hover:opacity-100"
-                      onClick={() => setConfirmAction({
-                        title: "Organisatielid verwijderen",
-                        description: `Weet je zeker dat je ${m.first_name ? `${m.first_name} ${m.last_name}`.trim() : m.email || "dit lid"} wilt verwijderen?`,
-                        onConfirm: () => removeMember(m.id),
-                      })}>
-                      <Trash2 size={13} className="text-destructive" />
-                    </Button>
+                    <div className="flex items-center gap-1">
+                      <Button variant="ghost" size="icon" className="h-7 w-7 opacity-0 group-hover:opacity-100"
+                        title="Uitnodiging opnieuw versturen"
+                        onClick={() => setConfirmAction({
+                          title: "Uitnodiging opnieuw versturen",
+                          description: `Weet je zeker dat je de uitnodiging opnieuw wilt versturen naar ${m.email || "dit lid"}? Het bestaande account wordt verwijderd en een nieuwe uitnodiging wordt verstuurd.`,
+                          onConfirm: () => resendInvite(m),
+                        })}>
+                        <Mail size={13} className="text-primary" />
+                      </Button>
+                      <Button variant="ghost" size="icon" className="h-7 w-7 opacity-0 group-hover:opacity-100"
+                        onClick={() => setConfirmAction({
+                          title: "Organisatielid verwijderen",
+                          description: `Weet je zeker dat je ${m.first_name ? `${m.first_name} ${m.last_name}`.trim() : m.email || "dit lid"} wilt verwijderen?`,
+                          onConfirm: () => removeMember(m.id),
+                        })}>
+                        <Trash2 size={13} className="text-destructive" />
+                      </Button>
+                    </div>
                   </div>
                 ))}
               </div>
