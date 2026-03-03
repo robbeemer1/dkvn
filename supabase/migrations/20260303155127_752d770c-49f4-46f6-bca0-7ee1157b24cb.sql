@@ -1,0 +1,1 @@
+ALTER TYPE public.membership_level ADD VALUE IF NOT EXISTS 'gast';

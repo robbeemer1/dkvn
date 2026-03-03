@@ -225,6 +225,7 @@ export default function MemberDetailPage() {
                       <SelectItem value="zilver">Zilver</SelectItem>
                       <SelectItem value="brons">Brons</SelectItem>
                       <SelectItem value="gastlid">Gastlid</SelectItem>
+                      <SelectItem value="gast">Gast</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
