@@ -10,8 +10,9 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Checkbox } from "@/components/ui/checkbox";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { MembershipBadge, RegionBadge } from "@/components/Badges";
-import { ArrowLeft, ChevronLeft, ChevronRight, Save } from "lucide-react";
+import { ArrowLeft, ChevronLeft, ChevronRight, Save, Trash2 } from "lucide-react";
 import { toast } from "sonner";
+import ConfirmDialog from "@/components/ConfirmDialog";
 
 export default function MemberDetailPage() {
   const { id } = useParams<{ id: string }>();
@@ -22,6 +23,8 @@ export default function MemberDetailPage() {
   const [events, setEvents] = useState<any[]>([]);
   const [allMemberIds, setAllMemberIds] = useState<string[]>([]);
   const [saving, setSaving] = useState(false);
+  const [showDeleteDialog, setShowDeleteDialog] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const [form, setForm] = useState({
     first_name: "", last_name: "", email: "", phone: "",
     company_name: "", company_role: "", branche: "", region_id: "", membership_level: "gastlid",
@@ -242,7 +245,10 @@ export default function MemberDetailPage() {
                 <Checkbox id="is_active" checked={form.is_active} onCheckedChange={v => setForm(f => ({ ...f, is_active: !!v }))} />
                 <Label htmlFor="is_active">Actief lid</Label>
               </div>
-              <div className="flex justify-end pt-2">
+              <div className="flex justify-between pt-2">
+                <Button variant="destructive" size="sm" onClick={() => setShowDeleteDialog(true)}>
+                  <Trash2 size={14} className="mr-2" /> Verwijderen
+                </Button>
                 <Button onClick={save} disabled={saving}>
                   <Save size={14} className="mr-2" />
                   {saving ? "Opslaan..." : "Opslaan"}
@@ -309,6 +315,27 @@ export default function MemberDetailPage() {
           </Card>
         </div>
       </div>
+
+      <ConfirmDialog
+        open={showDeleteDialog}
+        onOpenChange={setShowDeleteDialog}
+        title="Lid verwijderen"
+        description={`Weet je zeker dat je ${member.first_name} ${member.last_name} wilt verwijderen? Dit kan niet ongedaan worden gemaakt.`}
+        confirmLabel={deleting ? "Bezig..." : "Verwijderen"}
+        variant="destructive"
+        onConfirm={async () => {
+          if (!id) return;
+          setDeleting(true);
+          const { error } = await supabase.from("profiles").delete().eq("id", id);
+          setDeleting(false);
+          if (error) {
+            toast.error(error.message);
+          } else {
+            toast.success("Lid verwijderd");
+            navigate("/members");
+          }
+        }}
+      />
     </div>
   );
 }
