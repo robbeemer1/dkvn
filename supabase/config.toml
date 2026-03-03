@@ -11,3 +11,5 @@ project_id = "buoysrflkhemyterpamd"
     verify_jwt = false
   [functions.seating-ai-assistant]
     verify_jwt = false
+  [functions.external-api]
+    verify_jwt = false
