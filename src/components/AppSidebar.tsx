@@ -5,6 +5,7 @@ import {
 } from "lucide-react";
 import { useState } from "react";
 import { cn } from "@/lib/utils";
+import logo from "@/assets/logo_dkvn.png";
 
 const navItems = [
   { to: "/", icon: LayoutDashboard, label: "Dashboard" },
@@ -24,14 +25,17 @@ export function AppSidebar() {
       collapsed ? "w-16" : "w-64"
     )}>
       <div className="flex items-center justify-between p-4 border-b border-sidebar-border">
-        {!collapsed && (
-          <h1 className="text-lg font-display font-bold text-sidebar-primary truncate">
-            De Kunst van Netwerken
-          </h1>
+        {!collapsed ? (
+          <div className="flex items-center gap-2 min-w-0">
+            <img src={logo} alt="De Kunst van Netwerken" className="h-9 w-9 flex-shrink-0 rounded" />
+            <span className="text-sm font-bold text-sidebar-primary truncate">Kunst van Netwerken</span>
+          </div>
+        ) : (
+          <img src={logo} alt="De Kunst van Netwerken" className="h-8 w-8 rounded mx-auto" />
         )}
         <button
           onClick={() => setCollapsed(!collapsed)}
-          className="p-1.5 rounded-md hover:bg-sidebar-accent text-sidebar-foreground"
+          className="p-1.5 rounded-md hover:bg-sidebar-accent text-sidebar-foreground flex-shrink-0"
         >
           {collapsed ? <ChevronRight size={18} /> : <ChevronLeft size={18} />}
         </button>
