@@ -37,7 +37,7 @@ export default function EventDetailPage() {
   const [selectedMember, setSelectedMember] = useState("");
   const [guestForm, setGuestForm] = useState({ first_name: "", last_name: "", email: "", company_name: "" });
   const [seatingVersions, setSeatingVersions] = useState<any[]>([]);
-  const [tableConfig, setTableConfig] = useState<{ count: number; hosts: Record<number, string> }>({ count: 0, hosts: {} });
+  const [tableConfig, setTableConfig] = useState<{ count: number; hosts: Record<number, string>; fixedMembers: Record<number, string[]> }>({ count: 0, hosts: {}, fixedMembers: {} });
   const [showTableConfig, setShowTableConfig] = useState(false);
 
   // Edit state
@@ -166,9 +166,8 @@ export default function EventDetailPage() {
     try {
       const body: any = { event_id: id };
       if (tableConfig.count > 0) body.num_tables = tableConfig.count;
-      if (Object.keys(tableConfig.hosts).length > 0) {
-        body.table_hosts = tableConfig.hosts; // { "1": memberId, "2": memberId, ... }
-      }
+      if (Object.keys(tableConfig.hosts).length > 0) body.table_hosts = tableConfig.hosts;
+      if (Object.keys(tableConfig.fixedMembers).length > 0) body.table_fixed_members = tableConfig.fixedMembers;
       const res = await supabase.functions.invoke("generate-seating", { body });
       if (res.error) {
         const msg = res.error?.message || "Fout bij genereren";
@@ -494,10 +493,12 @@ export default function EventDetailPage() {
                       const count = Math.max(1, parseInt(e.target.value) || 1);
                       setTableConfig(prev => {
                         const hosts: Record<number, string> = {};
+                        const fixedMembers: Record<number, string[]> = {};
                         for (let i = 1; i <= count; i++) {
                           if (prev.hosts[i]) hosts[i] = prev.hosts[i];
+                          if (prev.fixedMembers[i]) fixedMembers[i] = prev.fixedMembers[i];
                         }
-                        return { count, hosts };
+                        return { count, hosts, fixedMembers };
                       });
                     }}
                   />
@@ -507,37 +508,103 @@ export default function EventDetailPage() {
                   </p>
                 </div>
 
-                <div className="space-y-3">
-                  <Label>Tafelvoorzitters (optioneel)</Label>
+                <div className="space-y-5">
+                  <Label>Tafels configureren</Label>
                   {Array.from({ length: tableConfig.count }, (_, i) => i + 1).map(tableNum => {
                     const activeRegs = registrations.filter(r => ["aangemeld", "bevestigd", "aanwezig"].includes(r.status));
-                    const assignedHostIds = Object.entries(tableConfig.hosts)
-                      .filter(([num]) => Number(num) !== tableNum)
-                      .map(([, id]) => id);
-                    const availableMembers = activeRegs.filter(r => !assignedHostIds.includes(r.member_id));
+                    // All pre-assigned member ids across other tables
+                    const allAssignedOtherTables = new Set<string>();
+                    for (const [num, hostId] of Object.entries(tableConfig.hosts)) {
+                      if (Number(num) !== tableNum) allAssignedOtherTables.add(hostId);
+                    }
+                    for (const [num, members] of Object.entries(tableConfig.fixedMembers)) {
+                      if (Number(num) !== tableNum) members.forEach(m => allAssignedOtherTables.add(m));
+                    }
+                    const currentHost = tableConfig.hosts[tableNum] || "";
+                    const currentFixed = tableConfig.fixedMembers[tableNum] || [];
+                    // Available for host: not assigned to other tables
+                    const availableForHost = activeRegs.filter(r => !allAssignedOtherTables.has(r.member_id));
+                    // Available for fixed members: not assigned to other tables, not the host of this table
+                    const availableForFixed = activeRegs.filter(r =>
+                      !allAssignedOtherTables.has(r.member_id) && r.member_id !== currentHost
+                    );
 
                     return (
-                      <div key={tableNum} className="flex items-center gap-3">
-                        <span className="text-sm font-medium w-16 shrink-0">Tafel {tableNum}</span>
-                        <Select
-                          value={tableConfig.hosts[tableNum] || "none"}
-                          onValueChange={v => setTableConfig(prev => {
-                            const hosts = { ...prev.hosts };
-                            if (v === "none") delete hosts[tableNum];
-                            else hosts[tableNum] = v;
-                            return { ...prev, hosts };
-                          })}
-                        >
-                          <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="Geen voorzitter" /></SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="none">Geen voorzitter</SelectItem>
-                            {availableMembers.map(r => (
-                              <SelectItem key={r.member_id} value={r.member_id}>
-                                {r.profiles?.first_name} {r.profiles?.last_name} {r.profiles?.company_name ? `(${r.profiles.company_name})` : ""}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
+                      <div key={tableNum} className="border rounded-lg p-3 space-y-2 bg-muted/20">
+                        <span className="text-sm font-semibold">Tafel {tableNum}</span>
+                        <div className="space-y-1">
+                          <Label className="text-xs text-muted-foreground">Voorzitter</Label>
+                          <Select
+                            value={currentHost || "none"}
+                            onValueChange={v => setTableConfig(prev => {
+                              const hosts = { ...prev.hosts };
+                              if (v === "none") delete hosts[tableNum];
+                              else hosts[tableNum] = v;
+                              // Remove from fixed if selected as host
+                              const fixedMembers = { ...prev.fixedMembers };
+                              if (v !== "none" && fixedMembers[tableNum]) {
+                                fixedMembers[tableNum] = fixedMembers[tableNum].filter(m => m !== v);
+                              }
+                              return { ...prev, hosts, fixedMembers };
+                            })}
+                          >
+                            <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="Geen voorzitter" /></SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="none">Geen voorzitter</SelectItem>
+                              {availableForHost.map(r => (
+                                <SelectItem key={r.member_id} value={r.member_id}>
+                                  {r.profiles?.first_name} {r.profiles?.last_name} {r.profiles?.company_name ? `(${r.profiles.company_name})` : ""}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        <div className="space-y-1">
+                          <Label className="text-xs text-muted-foreground">Vaste deelnemers</Label>
+                          <Select
+                            value="__add__"
+                            onValueChange={v => {
+                              if (v === "__add__") return;
+                              setTableConfig(prev => {
+                                const fixedMembers = { ...prev.fixedMembers };
+                                const current = fixedMembers[tableNum] || [];
+                                if (!current.includes(v)) fixedMembers[tableNum] = [...current, v];
+                                return { ...prev, fixedMembers };
+                              });
+                            }}
+                          >
+                            <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="Deelnemer toevoegen..." /></SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="__add__" disabled>Deelnemer toevoegen...</SelectItem>
+                              {availableForFixed.filter(r => !currentFixed.includes(r.member_id)).map(r => (
+                                <SelectItem key={r.member_id} value={r.member_id}>
+                                  {r.profiles?.first_name} {r.profiles?.last_name} {r.profiles?.company_name ? `(${r.profiles.company_name})` : ""}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                          {currentFixed.length > 0 && (
+                            <div className="flex flex-wrap gap-1 mt-1">
+                              {currentFixed.map(memberId => {
+                                const reg = activeRegs.find(r => r.member_id === memberId);
+                                return (
+                                  <span key={memberId} className="inline-flex items-center gap-1 text-xs bg-primary/10 text-primary px-2 py-0.5 rounded-full">
+                                    {reg?.profiles?.first_name} {reg?.profiles?.last_name}
+                                    <button
+                                      type="button"
+                                      className="hover:text-destructive"
+                                      onClick={() => setTableConfig(prev => {
+                                        const fixedMembers = { ...prev.fixedMembers };
+                                        fixedMembers[tableNum] = (fixedMembers[tableNum] || []).filter(m => m !== memberId);
+                                        return { ...prev, fixedMembers };
+                                      })}
+                                    >×</button>
+                                  </span>
+                                );
+                              })}
+                            </div>
+                          )}
+                        </div>
                       </div>
                     );
                   })}
