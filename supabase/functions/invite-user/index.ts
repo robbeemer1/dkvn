@@ -23,22 +23,24 @@ Deno.serve(async (req) => {
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 
-    // Verify caller is super_admin using their JWT
+    // Verify caller using JWT claims (no server-side session check)
     const callerClient = createClient(supabaseUrl, Deno.env.get("SUPABASE_ANON_KEY")!, {
       global: { headers: { Authorization: authHeader } },
     });
-    const { data: { user: caller } } = await callerClient.auth.getUser();
-    if (!caller) {
+    const token = authHeader.replace("Bearer ", "");
+    const { data: claimsData, error: claimsError } = await callerClient.auth.getClaims(token);
+    if (claimsError || !claimsData?.claims) {
       return new Response(JSON.stringify({ error: "Niet geautoriseerd" }), {
         status: 401,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
+    const callerId = claimsData.claims.sub;
 
     const adminClient = createClient(supabaseUrl, supabaseServiceKey);
 
     // Check super_admin role
-    const { data: hasRole } = await adminClient.rpc("is_super_admin", { _user_id: caller.id });
+    const { data: hasRole } = await adminClient.rpc("is_super_admin", { _user_id: callerId });
     if (!hasRole) {
       return new Response(JSON.stringify({ error: "Alleen super admins kunnen gebruikers uitnodigen" }), {
         status: 403,
