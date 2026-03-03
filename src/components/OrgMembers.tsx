@@ -4,9 +4,9 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Trash2, Plus, UserPlus, Shield, ShieldCheck, Users } from "lucide-react";
+import { Trash2, Plus, UserPlus, Shield, ShieldCheck, Users, Mail } from "lucide-react";
 import { toast } from "sonner";
-import { Badge } from "@/components/ui/badge";
+import ConfirmDialog from "@/components/ConfirmDialog";
 
 interface OrgMember {
   id: string;
@@ -34,10 +34,10 @@ export default function OrgMembers() {
   const [inviteEmail, setInviteEmail] = useState("");
   const [inviteRole, setInviteRole] = useState("member");
   const [adding, setAdding] = useState(false);
+  const [confirmAction, setConfirmAction] = useState<{ title: string; description: string; onConfirm: () => void } | null>(null);
 
   const fetchMembers = async () => {
     setLoading(true);
-    // Get all user_roles with profile info
     const { data: roles } = await supabase
       .from("user_roles")
       .select("id, user_id, role, region_id");
@@ -69,7 +69,6 @@ export default function OrgMembers() {
       };
     });
 
-    // Sort: super_admin first, then alphabetically
     merged.sort((a, b) => {
       const order = ASSIGNABLE_ROLES;
       const diff = order.indexOf(a.role) - order.indexOf(b.role);
@@ -84,41 +83,90 @@ export default function OrgMembers() {
   useEffect(() => { fetchMembers(); }, []);
 
   const addMember = async () => {
-    if (!inviteEmail.trim()) return;
+    const email = inviteEmail.trim().toLowerCase();
+    if (!email) return;
     setAdding(true);
 
-    // Find user by email in profiles
+    // First check if user exists in profiles
     const { data: profile } = await supabase
       .from("profiles")
       .select("id")
-      .eq("email", inviteEmail.trim().toLowerCase())
-      .single();
+      .eq("email", email)
+      .maybeSingle();
 
-    if (!profile) {
-      toast.error("Geen gebruiker gevonden met dit e-mailadres. De gebruiker moet eerst een account aanmaken.");
+    if (profile) {
+      // User exists — just add role
+      const existing = members.find(m => m.user_id === profile.id && m.role === inviteRole);
+      if (existing) {
+        toast.error("Deze gebruiker heeft deze rol al.");
+        setAdding(false);
+        return;
+      }
+
+      const { error } = await supabase.from("user_roles").insert({
+        user_id: profile.id,
+        role: inviteRole,
+      } as any);
+
+      if (error) toast.error(error.message);
+      else {
+        toast.success("Organisatielid toegevoegd");
+        setInviteEmail("");
+        fetchMembers();
+      }
       setAdding(false);
       return;
     }
 
-    // Check if role already exists
-    const existing = members.find(m => m.user_id === profile.id && m.role === inviteRole);
-    if (existing) {
-      toast.error("Deze gebruiker heeft deze rol al.");
-      setAdding(false);
-      return;
-    }
+    // User doesn't exist — invite via edge function
+    try {
+      const { data, error } = await supabase.functions.invoke("invite-user", {
+        body: { email, role: inviteRole },
+      });
 
-    const { error } = await supabase.from("user_roles").insert({
-      user_id: profile.id,
-      role: inviteRole,
-    } as any);
+      if (error) {
+        toast.error("Fout bij uitnodigen: " + error.message);
+        setAdding(false);
+        return;
+      }
 
-    if (error) toast.error(error.message);
-    else {
-      toast.success("Organisatielid toegevoegd");
+      if (data?.error === "exists") {
+        // Edge case: profile exists but we didn't find it (race condition)
+        const existingRole = members.find(m => m.user_id === data.user_id && m.role === inviteRole);
+        if (existingRole) {
+          toast.error("Deze gebruiker heeft deze rol al.");
+        } else {
+          const { error: roleError } = await supabase.from("user_roles").insert({
+            user_id: data.user_id,
+            role: inviteRole,
+          } as any);
+          if (roleError) toast.error(roleError.message);
+          else {
+            toast.success("Organisatielid toegevoegd");
+            setInviteEmail("");
+            fetchMembers();
+          }
+        }
+        setAdding(false);
+        return;
+      }
+
+      if (data?.error) {
+        toast.error(data.error);
+        setAdding(false);
+        return;
+      }
+
+      toast.success("Uitnodiging verstuurd! De gebruiker ontvangt een e-mail om een wachtwoord aan te maken.", {
+        icon: <Mail size={16} />,
+        duration: 5000,
+      });
       setInviteEmail("");
       fetchMembers();
+    } catch (err: any) {
+      toast.error("Fout bij uitnodigen: " + (err.message || "Onbekende fout"));
     }
+
     setAdding(false);
   };
 
@@ -135,85 +183,101 @@ export default function OrgMembers() {
   };
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="text-lg font-display flex items-center gap-2">
-          <UserPlus size={18} />
-          Organisatieleden
-        </CardTitle>
-        <p className="text-sm text-muted-foreground">
-          Beheer de gebruikers die toegang hebben tot het platform. Dit zijn geen leden/gasten, maar de mensen die het systeem beheren.
-        </p>
-      </CardHeader>
-      <CardContent className="space-y-4">
-        {/* Add member */}
-        <div className="flex gap-2 items-end flex-wrap">
-          <div className="flex-1 min-w-[200px]">
-            <label className="text-sm font-medium">E-mailadres</label>
-            <Input
-              value={inviteEmail}
-              onChange={e => setInviteEmail(e.target.value)}
-              placeholder="gebruiker@voorbeeld.nl"
-              type="email"
-              onKeyDown={e => e.key === "Enter" && addMember()}
-            />
-          </div>
-          <div className="w-48">
-            <label className="text-sm font-medium">Rol</label>
-            <Select value={inviteRole} onValueChange={setInviteRole}>
-              <SelectTrigger><SelectValue /></SelectTrigger>
-              <SelectContent>
-                {ASSIGNABLE_ROLES.map(r => (
-                  <SelectItem key={r} value={r}>{ROLE_LABELS[r]?.label || r}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-          <Button onClick={addMember} disabled={adding} size="sm">
-            <Plus size={14} className="mr-1" />Toevoegen
-          </Button>
-        </div>
-
-        {/* Members list */}
-        <div className="border rounded-lg overflow-hidden">
-          <div className="grid grid-cols-[1fr_1fr_160px_40px] gap-2 px-4 py-2 bg-muted/50 text-xs font-medium text-muted-foreground border-b">
-            <span>Naam</span>
-            <span>E-mail</span>
-            <span>Rol</span>
-            <span></span>
-          </div>
-          {loading ? (
-            <p className="text-sm text-muted-foreground text-center py-6">Laden...</p>
-          ) : members.length === 0 ? (
-            <p className="text-sm text-muted-foreground text-center py-6">Nog geen organisatieleden</p>
-          ) : (
-            <div className="divide-y">
-              {members.map(m => (
-                <div key={m.id} className="grid grid-cols-[1fr_1fr_160px_40px] gap-2 px-4 py-3 items-center group hover:bg-muted/20">
-                  <div className="flex items-center gap-2 min-w-0">
-                    <span className="text-sm font-medium truncate">{m.first_name} {m.last_name}</span>
-                  </div>
-                  <span className="text-sm text-muted-foreground truncate">{m.email || "—"}</span>
-                  <Select value={m.role} onValueChange={v => updateRole(m.id, v)}>
-                    <SelectTrigger className="h-8 text-xs">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {ASSIGNABLE_ROLES.map(r => (
-                        <SelectItem key={r} value={r}>{ROLE_LABELS[r]?.label || r}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  <Button variant="ghost" size="icon" className="h-7 w-7 opacity-0 group-hover:opacity-100"
-                    onClick={() => removeMember(m.id)}>
-                    <Trash2 size={13} className="text-destructive" />
-                  </Button>
-                </div>
-              ))}
+    <>
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-lg font-display flex items-center gap-2">
+            <UserPlus size={18} />
+            Organisatieleden
+          </CardTitle>
+          <p className="text-sm text-muted-foreground">
+            Beheer de gebruikers die toegang hebben tot het platform. Voer een e-mailadres in — als de gebruiker nog geen account heeft, wordt er automatisch een uitnodiging verstuurd.
+          </p>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {/* Add member */}
+          <div className="flex gap-2 items-end flex-wrap">
+            <div className="flex-1 min-w-[200px]">
+              <label className="text-sm font-medium">E-mailadres</label>
+              <Input
+                value={inviteEmail}
+                onChange={e => setInviteEmail(e.target.value)}
+                placeholder="gebruiker@voorbeeld.nl"
+                type="email"
+                onKeyDown={e => e.key === "Enter" && addMember()}
+              />
             </div>
-          )}
-        </div>
-      </CardContent>
-    </Card>
+            <div className="w-48">
+              <label className="text-sm font-medium">Rol</label>
+              <Select value={inviteRole} onValueChange={setInviteRole}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {ASSIGNABLE_ROLES.map(r => (
+                    <SelectItem key={r} value={r}>{ROLE_LABELS[r]?.label || r}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <Button onClick={addMember} disabled={adding} size="sm">
+              <Plus size={14} className="mr-1" />{adding ? "Bezig..." : "Toevoegen"}
+            </Button>
+          </div>
+
+          {/* Members list */}
+          <div className="border rounded-lg overflow-hidden">
+            <div className="grid grid-cols-[1fr_1fr_160px_40px] gap-2 px-4 py-2 bg-muted/50 text-xs font-medium text-muted-foreground border-b">
+              <span>Naam</span>
+              <span>E-mail</span>
+              <span>Rol</span>
+              <span></span>
+            </div>
+            {loading ? (
+              <p className="text-sm text-muted-foreground text-center py-6">Laden...</p>
+            ) : members.length === 0 ? (
+              <p className="text-sm text-muted-foreground text-center py-6">Nog geen organisatieleden</p>
+            ) : (
+              <div className="divide-y">
+                {members.map(m => (
+                  <div key={m.id} className="grid grid-cols-[1fr_1fr_160px_40px] gap-2 px-4 py-3 items-center group hover:bg-muted/20">
+                    <div className="flex items-center gap-2 min-w-0">
+                      <span className="text-sm font-medium truncate">
+                        {m.first_name || m.last_name ? `${m.first_name} ${m.last_name}`.trim() : <span className="text-muted-foreground italic">Uitgenodigd</span>}
+                      </span>
+                    </div>
+                    <span className="text-sm text-muted-foreground truncate">{m.email || "—"}</span>
+                    <Select value={m.role} onValueChange={v => updateRole(m.id, v)}>
+                      <SelectTrigger className="h-8 text-xs">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {ASSIGNABLE_ROLES.map(r => (
+                          <SelectItem key={r} value={r}>{ROLE_LABELS[r]?.label || r}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <Button variant="ghost" size="icon" className="h-7 w-7 opacity-0 group-hover:opacity-100"
+                      onClick={() => setConfirmAction({
+                        title: "Organisatielid verwijderen",
+                        description: `Weet je zeker dat je ${m.first_name ? `${m.first_name} ${m.last_name}`.trim() : m.email || "dit lid"} wilt verwijderen?`,
+                        onConfirm: () => removeMember(m.id),
+                      })}>
+                      <Trash2 size={13} className="text-destructive" />
+                    </Button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </CardContent>
+      </Card>
+
+      <ConfirmDialog
+        open={!!confirmAction}
+        onOpenChange={open => !open && setConfirmAction(null)}
+        title={confirmAction?.title || ""}
+        description={confirmAction?.description || ""}
+        onConfirm={() => { confirmAction?.onConfirm(); setConfirmAction(null); }}
+      />
+    </>
   );
 }
