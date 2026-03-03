@@ -251,7 +251,7 @@ export default function EventDetailPage() {
   return (
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row sm:items-center gap-4">
-        <Button variant="ghost" size="sm" onClick={() => navigate("/events")}><ArrowLeft size={16} /></Button>
+        <Button variant="ghost" size="sm" className="hidden sm:inline-flex" onClick={() => navigate("/events")}><ArrowLeft size={16} /></Button>
         <div className="flex-1 min-w-0">
           <h1 className="text-2xl sm:text-3xl font-display font-bold truncate">{event.title}</h1>
           <p className="text-muted-foreground text-sm sm:text-base">
