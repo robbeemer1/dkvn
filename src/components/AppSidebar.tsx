@@ -1,7 +1,7 @@
 import { NavLink, useLocation } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import {
-  LayoutDashboard, Users, Calendar, Settings, LogOut, ChevronLeft, ChevronRight, Armchair
+  LayoutDashboard, Users, Calendar, Settings, LogOut, ChevronLeft, ChevronRight
 } from "lucide-react";
 import { useState } from "react";
 import { cn } from "@/lib/utils";
@@ -10,7 +10,6 @@ const navItems = [
   { to: "/", icon: LayoutDashboard, label: "Dashboard" },
   { to: "/members", icon: Users, label: "Leden" },
   { to: "/events", icon: Calendar, label: "Events" },
-  { to: "/seating", icon: Armchair, label: "Tafelindeling" },
   { to: "/settings", icon: Settings, label: "Instellingen" },
 ];
 
