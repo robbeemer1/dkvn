@@ -10,7 +10,7 @@ serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
   try {
-    const { event_id, num_tables, table_hosts = {} } = await req.json();
+    const { event_id, num_tables, table_hosts = {}, table_fixed_members = {} } = await req.json();
     if (!event_id) throw new Error("event_id is required");
 
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
@@ -49,14 +49,22 @@ serve(async (req) => {
     const numTables = num_tables || Math.ceil(totalAttendees / 8);
     const tableSize = Math.ceil(totalAttendees / numTables);
 
-    // Parse table_hosts: { "1": memberId, "2": memberId } -> map tableIndex (0-based) to memberId
+    // Parse table_hosts and table_fixed_members
     const hostMap: Record<number, string> = {};
-    const hostMemberIds = new Set<string>();
+    const fixedMap: Record<number, string[]> = {};
+    const preAssignedIds = new Set<string>();
     for (const [tableNumStr, memberId] of Object.entries(table_hosts)) {
-      const idx = parseInt(tableNumStr) - 1; // convert 1-based to 0-based
+      const idx = parseInt(tableNumStr) - 1;
       if (idx >= 0 && idx < numTables && typeof memberId === "string" && memberId) {
         hostMap[idx] = memberId;
-        hostMemberIds.add(memberId);
+        preAssignedIds.add(memberId);
+      }
+    }
+    for (const [tableNumStr, memberIds_arr] of Object.entries(table_fixed_members)) {
+      const idx = parseInt(tableNumStr) - 1;
+      if (idx >= 0 && idx < numTables && Array.isArray(memberIds_arr)) {
+        fixedMap[idx] = (memberIds_arr as string[]).filter(id => typeof id === "string" && id);
+        fixedMap[idx].forEach(id => preAssignedIds.add(id));
       }
     }
 
@@ -84,14 +92,21 @@ serve(async (req) => {
         await supabase.from("event_tables").delete().eq("round_id", round.id);
       }
 
-      // Initialize tables with hosts pre-assigned
+      // Initialize tables with hosts and fixed members pre-assigned
       const tables: string[][] = Array.from({ length: numTables }, () => []);
       for (const [idx, memberId] of Object.entries(hostMap)) {
         tables[Number(idx)].push(memberId);
       }
+      for (const [idx, members] of Object.entries(fixedMap)) {
+        for (const memberId of members) {
+          if (!tables[Number(idx)].includes(memberId)) {
+            tables[Number(idx)].push(memberId);
+          }
+        }
+      }
 
-      // Remaining attendees (exclude hosts)
-      const remaining = [...memberIds.filter(id => !hostMemberIds.has(id)), ...guestIds.map(g => `guest:${g}`)];
+      // Remaining attendees (exclude pre-assigned)
+      const remaining = [...memberIds.filter(id => !preAssignedIds.has(id)), ...guestIds.map(g => `guest:${g}`)];
       // Shuffle
       for (let i = remaining.length - 1; i > 0; i--) {
         const j = Math.floor(Math.random() * (i + 1));
@@ -131,10 +146,11 @@ serve(async (req) => {
         const i1 = Math.floor(Math.random() * tables[t1].length);
         const i2 = Math.floor(Math.random() * tables[t2].length);
 
-        // Don't swap hosts
+        // Don't swap hosts or fixed members
         const person1 = tables[t1][i1];
         const person2 = tables[t2][i2];
         if (hostMap[t1] === person1 || hostMap[t2] === person2) continue;
+        if (fixedMap[t1]?.includes(person1) || fixedMap[t2]?.includes(person2)) continue;
 
         const scoreBefore = tableScore(tables[t1], meetingCounts, pairKey, roundAssignments)
           + tableScore(tables[t2], meetingCounts, pairKey, roundAssignments);
