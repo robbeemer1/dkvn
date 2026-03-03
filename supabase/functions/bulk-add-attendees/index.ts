@@ -57,31 +57,17 @@ serve(async (req) => {
       addedCount += matched_ids.length;
     }
 
-    // 2. Create guest profiles + registrations
+    // 2. Add unmatched as event_guests
     if (guests?.length > 0) {
-      for (const guest of guests) {
-        const { data: profile, error: pErr } = await supabaseAdmin
-          .from("profiles")
-          .insert({
-            id: crypto.randomUUID(),
-            first_name: guest.first_name,
-            last_name: guest.last_name,
-            membership_level: "gast",
-          })
-          .select("id")
-          .single();
-
-        if (pErr) {
-          console.error("Profile error:", pErr.message);
-          continue;
-        }
-
-        await supabaseAdmin.from("event_registrations").upsert(
-          { event_id, member_id: profile.id },
-          { onConflict: "event_id,member_id" }
-        );
-        addedCount++;
-      }
+      const guestInserts = guests.map((g: any) => ({
+        event_id,
+        first_name: g.first_name,
+        last_name: g.last_name,
+        status: "aangemeld",
+      }));
+      const { error: gErr } = await supabaseAdmin.from("event_guests").insert(guestInserts);
+      if (gErr) throw gErr;
+      addedCount += guests.length;
     }
 
     return new Response(JSON.stringify({ success: true, added: addedCount }), {

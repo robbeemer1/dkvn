@@ -219,7 +219,7 @@ export default function PasteAttendees({ eventId, existingMemberIds, onDone }: P
                 </div>
                 <p className="text-xs text-muted-foreground flex items-center gap-1">
                   <UserPlus size={12} />
-                  Geselecteerde namen worden als nieuw lid (Gast) aangemaakt en toegevoegd.
+                  Geselecteerde namen worden als gast aan dit event toegevoegd.
                 </p>
               </div>
             )}
