@@ -22,6 +22,7 @@ import { cn } from "@/lib/utils";
 import EventAgenda from "@/components/EventAgenda";
 import EventTodos from "@/components/EventTodos";
 import PasteAttendees from "@/components/PasteAttendees";
+import SearchableSelect from "@/components/SearchableSelect";
 
 export default function EventDetailPage() {
   const { id } = useParams<{ id: string }>();
@@ -546,37 +547,35 @@ export default function EventDetailPage() {
                         <span className="text-sm font-semibold">Tafel {tableNum}</span>
                         <div className="space-y-1">
                           <Label className="text-xs text-muted-foreground">Voorzitter</Label>
-                          <Select
+                          <SearchableSelect
                             value={currentHost || "none"}
                             onValueChange={v => setTableConfig(prev => {
                               const hosts = { ...prev.hosts };
-                              if (v === "none") delete hosts[tableNum];
+                              if (v === "none" || v === "") delete hosts[tableNum];
                               else hosts[tableNum] = v;
-                              // Remove from fixed if selected as host
                               const fixedMembers = { ...prev.fixedMembers };
-                              if (v !== "none" && fixedMembers[tableNum]) {
+                              if (v !== "none" && v !== "" && fixedMembers[tableNum]) {
                                 fixedMembers[tableNum] = fixedMembers[tableNum].filter(m => m !== v);
                               }
                               return { ...prev, hosts, fixedMembers };
                             })}
-                          >
-                            <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="Geen voorzitter" /></SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value="none">Geen voorzitter</SelectItem>
-                              {availableForHost.map(r => (
-                                <SelectItem key={r.member_id} value={r.member_id}>
-                                  {r.profiles?.first_name} {r.profiles?.last_name} {r.profiles?.company_name ? `(${r.profiles.company_name})` : ""}
-                                </SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
+                            placeholder="Geen voorzitter"
+                            emptyText="Geen leden gevonden."
+                            options={[
+                              { value: "none", label: "Geen voorzitter" },
+                              ...availableForHost.map(r => ({
+                                value: r.member_id,
+                                label: `${r.profiles?.first_name} ${r.profiles?.last_name}${r.profiles?.company_name ? ` (${r.profiles.company_name})` : ""}`,
+                              })),
+                            ]}
+                          />
                         </div>
                         <div className="space-y-1">
                           <Label className="text-xs text-muted-foreground">Vaste deelnemers</Label>
-                          <Select
-                            value="__add__"
+                          <SearchableSelect
+                            value=""
                             onValueChange={v => {
-                              if (v === "__add__") return;
+                              if (!v) return;
                               setTableConfig(prev => {
                                 const fixedMembers = { ...prev.fixedMembers };
                                 const current = fixedMembers[tableNum] || [];
@@ -584,17 +583,13 @@ export default function EventDetailPage() {
                                 return { ...prev, fixedMembers };
                               });
                             }}
-                          >
-                            <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="Deelnemer toevoegen..." /></SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value="__add__" disabled>Deelnemer toevoegen...</SelectItem>
-                              {availableForFixed.filter(r => !currentFixed.includes(r.member_id)).map(r => (
-                                <SelectItem key={r.member_id} value={r.member_id}>
-                                  {r.profiles?.first_name} {r.profiles?.last_name} {r.profiles?.company_name ? `(${r.profiles.company_name})` : ""}
-                                </SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
+                            placeholder="Deelnemer toevoegen..."
+                            emptyText="Geen leden gevonden."
+                            options={availableForFixed.filter(r => !currentFixed.includes(r.member_id)).map(r => ({
+                              value: r.member_id,
+                              label: `${r.profiles?.first_name} ${r.profiles?.last_name}${r.profiles?.company_name ? ` (${r.profiles.company_name})` : ""}`,
+                            }))}
+                          />
                           {currentFixed.length > 0 && (
                             <div className="flex flex-wrap gap-1 mt-1">
                               {currentFixed.map(memberId => {
