@@ -41,7 +41,13 @@ export function printPdf(title: string, subtitle: string, bodyHtml: string) {
   .table-card ul { list-style: none; }
   .table-card li { padding: 2px 0; font-size: 11px; color: #444; }
   .table-card li.host { font-weight: 700; color: #1a1a2e; }
+  .page-break { page-break-before: always; }
+  .round-section { break-before: page; }
+  .round-section:first-child { break-before: auto; }
   .footer { margin-top: 20px; padding-top: 8px; border-top: 1px solid #eee; font-size: 9px; color: #999; text-align: center; }
+  @media print {
+    .no-print { display: none !important; }
+  }
 </style>
 </head>
 <body>
@@ -57,8 +63,11 @@ export function printPdf(title: string, subtitle: string, bodyHtml: string) {
 </body>
 </html>`);
   win.document.close();
-  // Small delay to let styles render
-  setTimeout(() => { win.print(); }, 300);
+  setTimeout(() => {
+    win.print();
+    // Close the window after printing or cancelling
+    win.addEventListener("afterprint", () => win.close());
+  }, 300);
 }
 
 /**
@@ -128,10 +137,12 @@ export function printSeatingPdf(
 ) {
   let html = "";
 
-  rounds.forEach(round => {
+  rounds.forEach((round, idx) => {
+    html += `<div class="${idx > 0 ? "round-section" : ""}">`;
     html += `<div class="section-title">${round.name || `Ronde ${round.round_number}`}</div>`;
     if (!round.event_tables || round.event_tables.length === 0) {
       html += `<p style="color:#999;font-size:11px;">Geen tafels in deze ronde.</p>`;
+      html += `</div>`;
       return;
     }
     html += `<div class="tables-grid">`;
@@ -152,7 +163,7 @@ export function printSeatingPdf(
           });
         html += `</ul></div>`;
       });
-    html += `</div>`;
+    html += `</div></div>`;
   });
 
   printPdf(`Tafelindeling — ${eventTitle}`, eventInfo, html);
