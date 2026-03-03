@@ -45,6 +45,7 @@ serve(async (req) => {
     if (!(isAdmin || isOrganizer || isRegionAdmin)) throw new Error("Geen toegang");
 
     let addedCount = 0;
+    const failedGuests: string[] = [];
 
     // 1. Add matched member registrations
     if (matched_ids?.length > 0) {
@@ -57,21 +58,46 @@ serve(async (req) => {
       addedCount += matched_ids.length;
     }
 
-    // 2. Create guest profiles + register them
+    // 2. Create guest auth users + guest profiles + register them
     if (guests?.length > 0) {
       for (const guest of guests) {
-        const guestId = crypto.randomUUID();
-        const { error: pErr } = await supabaseAdmin
-          .from("profiles")
-          .insert({
-            id: guestId,
+        const tempId = crypto.randomUUID();
+        const guestEmail = `guest.${tempId}@no-login.local`;
+        const tempPassword = `${crypto.randomUUID()}Aa1!`;
+
+        const { data: createdUser, error: userErr } = await supabaseAdmin.auth.admin.createUser({
+          email: guestEmail,
+          password: tempPassword,
+          email_confirm: true,
+          user_metadata: {
             first_name: guest.first_name,
             last_name: guest.last_name,
-            membership_level: "gast",
-          });
+          },
+        });
+
+        if (userErr || !createdUser?.user?.id) {
+          console.error("Guest auth create error:", userErr?.message || "unknown error");
+          failedGuests.push(`${guest.first_name} ${guest.last_name}`);
+          continue;
+        }
+
+        const guestId = createdUser.user.id;
+
+        const { error: pErr } = await supabaseAdmin
+          .from("profiles")
+          .upsert(
+            {
+              id: guestId,
+              first_name: guest.first_name,
+              last_name: guest.last_name,
+              membership_level: "gast",
+            },
+            { onConflict: "id" }
+          );
 
         if (pErr) {
           console.error("Profile create error:", pErr.message);
+          failedGuests.push(`${guest.first_name} ${guest.last_name}`);
           continue;
         }
 
@@ -81,12 +107,22 @@ serve(async (req) => {
             { event_id, member_id: guestId },
             { onConflict: "event_id,member_id" }
           );
-        if (rErr) console.error("Registration error:", rErr.message);
+
+        if (rErr) {
+          console.error("Registration error:", rErr.message);
+          failedGuests.push(`${guest.first_name} ${guest.last_name}`);
+          continue;
+        }
+
         addedCount++;
       }
     }
 
-    return new Response(JSON.stringify({ success: true, added: addedCount }), {
+    return new Response(JSON.stringify({
+      success: failedGuests.length === 0,
+      added: addedCount,
+      failed: failedGuests,
+    }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   } catch (e) {
