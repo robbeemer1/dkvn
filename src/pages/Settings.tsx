@@ -41,6 +41,10 @@ export default function SettingsPage() {
         </CardHeader>
         <CardContent>
           <form onSubmit={handleSave} className="space-y-4">
+            <div className="space-y-2">
+              <Label>E-mailadres</Label>
+              <Input value={profile?.email || ""} disabled className="bg-muted" />
+            </div>
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label>Voornaam</Label>
