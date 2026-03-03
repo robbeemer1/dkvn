@@ -163,8 +163,17 @@ export default function EventDetailPage() {
     toast.info("Tafelindeling wordt gegenereerd...");
     try {
       const res = await supabase.functions.invoke("generate-seating", { body: { event_id: id } });
-      if (res.error) throw res.error;
-      toast.success("Tafelindeling gegenereerd!");
+      if (res.error) {
+        const msg = res.error?.message || "Fout bij genereren";
+        toast.error(msg);
+        return;
+      }
+      const data = res.data;
+      if (data?.error) {
+        toast.error(data.error);
+        return;
+      }
+      toast.success(data?.message || "Tafelindeling gegenereerd!");
       fetchAll();
     } catch (err: any) {
       toast.error(err.message || "Fout bij genereren");
