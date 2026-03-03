@@ -11,8 +11,10 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { MembershipBadge, StatusBadge, RegionBadge } from "@/components/Badges";
-import { ArrowLeft, Plus, UserPlus, Armchair, Sparkles } from "lucide-react";
+import { ArrowLeft, Plus, UserPlus, Armchair, Sparkles, CalendarDays, CheckSquare } from "lucide-react";
 import { toast } from "sonner";
+import EventAgenda from "@/components/EventAgenda";
+import EventTodos from "@/components/EventTodos";
 
 export default function EventDetailPage() {
   const { id } = useParams<{ id: string }>();
@@ -137,6 +139,8 @@ export default function EventDetailPage() {
         <TabsList>
           <TabsTrigger value="attendees">Deelnemers ({registrations.length + guests.length})</TabsTrigger>
           <TabsTrigger value="seating">Tafelindeling ({rounds.length} rondes)</TabsTrigger>
+          <TabsTrigger value="agenda">Agenda</TabsTrigger>
+          <TabsTrigger value="todos">To-do</TabsTrigger>
         </TabsList>
 
         <TabsContent value="attendees" className="space-y-4">
@@ -299,6 +303,13 @@ export default function EventDetailPage() {
               </CardContent>
             </Card>
           )}
+        </TabsContent>
+        <TabsContent value="agenda">
+          <EventAgenda eventId={id!} />
+        </TabsContent>
+
+        <TabsContent value="todos">
+          <EventTodos eventId={id!} />
         </TabsContent>
       </Tabs>
     </div>

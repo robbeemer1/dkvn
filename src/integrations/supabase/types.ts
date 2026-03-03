@@ -44,6 +44,47 @@ export type Database = {
         }
         Relationships: []
       }
+      event_agenda_items: {
+        Row: {
+          created_at: string
+          description: string | null
+          end_time: string | null
+          event_id: string
+          id: string
+          sort_order: number
+          start_time: string | null
+          title: string
+        }
+        Insert: {
+          created_at?: string
+          description?: string | null
+          end_time?: string | null
+          event_id: string
+          id?: string
+          sort_order?: number
+          start_time?: string | null
+          title: string
+        }
+        Update: {
+          created_at?: string
+          description?: string | null
+          end_time?: string | null
+          event_id?: string
+          id?: string
+          sort_order?: number
+          start_time?: string | null
+          title?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "event_agenda_items_event_id_fkey"
+            columns: ["event_id"]
+            isOneToOne: false
+            referencedRelation: "events"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       event_guests: {
         Row: {
           company_name: string | null
