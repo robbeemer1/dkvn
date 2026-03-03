@@ -250,11 +250,11 @@ export default function EventDetailPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center gap-4">
+      <div className="flex flex-col sm:flex-row sm:items-center gap-4">
         <Button variant="ghost" size="sm" onClick={() => navigate("/events")}><ArrowLeft size={16} /></Button>
-        <div className="flex-1">
-          <h1 className="text-3xl font-display font-bold">{event.title}</h1>
-          <p className="text-muted-foreground">
+        <div className="flex-1 min-w-0">
+          <h1 className="text-2xl sm:text-3xl font-display font-bold truncate">{event.title}</h1>
+          <p className="text-muted-foreground text-sm sm:text-base">
             {event.regions?.name} · {new Date(event.event_date).toLocaleDateString("nl-NL")}
             {event.location_name ? ` · ${event.location_name}` : ""}
           </p>
@@ -262,7 +262,7 @@ export default function EventDetailPage() {
       </div>
 
       <Tabs defaultValue="details">
-        <TabsList>
+        <TabsList className="w-full overflow-x-auto flex justify-start">
           <TabsTrigger value="details">Details</TabsTrigger>
           <TabsTrigger value="agenda">Agenda</TabsTrigger>
           <TabsTrigger value="todos">To-do</TabsTrigger>
@@ -489,7 +489,7 @@ export default function EventDetailPage() {
 
           <Card>
             <CardHeader><CardTitle className="text-sm font-semibold">Leden ({registrations.length})</CardTitle></CardHeader>
-            <CardContent className="p-0">
+            <CardContent className="p-0 overflow-x-auto">
               <Table>
                 <TableHeader>
                   <TableRow>

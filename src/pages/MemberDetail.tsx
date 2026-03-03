@@ -139,14 +139,14 @@ export default function MemberDetailPage() {
   return (
     <div className="space-y-6">
       {/* Header with navigation */}
-      <div className="flex items-center justify-between">
+      <div className="space-y-3">
         <div className="flex items-center gap-3">
           <Button variant="ghost" size="icon" onClick={() => navigate("/members")}>
             <ArrowLeft size={18} />
           </Button>
-          <div>
-            <h1 className="text-2xl font-bold">{member.first_name} {member.last_name}</h1>
-            <div className="flex items-center gap-2 mt-1">
+          <div className="min-w-0">
+            <h1 className="text-xl sm:text-2xl font-bold truncate">{member.first_name} {member.last_name}</h1>
+            <div className="flex flex-wrap items-center gap-2 mt-1">
               {member.regions?.name && <RegionBadge name={member.regions.name} />}
               <MembershipBadge level={member.membership_level} />
               <span className={`text-xs ${member.is_active ? "text-emerald-600" : "text-destructive"}`}>
@@ -155,15 +155,15 @@ export default function MemberDetailPage() {
             </div>
           </div>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 justify-end">
           <Button variant="outline" size="sm" disabled={!prevId} onClick={() => prevId && navigate(`/members/${prevId}`)}>
-            <ChevronLeft size={16} className="mr-1" /> Vorige
+            <ChevronLeft size={16} className="mr-1" /> <span className="hidden sm:inline">Vorige</span>
           </Button>
           <span className="text-xs text-muted-foreground">
             {currentIndex >= 0 ? `${currentIndex + 1} / ${allMemberIds.length}` : ""}
           </span>
           <Button variant="outline" size="sm" disabled={!nextId} onClick={() => nextId && navigate(`/members/${nextId}`)}>
-            Volgende <ChevronRight size={16} className="ml-1" />
+            <span className="hidden sm:inline">Volgende</span> <ChevronRight size={16} className="ml-1" />
           </Button>
         </div>
       </div>
