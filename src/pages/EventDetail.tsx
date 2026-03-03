@@ -5,14 +5,20 @@ import { useAuth } from "@/contexts/AuthContext";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Calendar } from "@/components/ui/calendar";
 import { MembershipBadge, StatusBadge, RegionBadge } from "@/components/Badges";
-import { ArrowLeft, Plus, UserPlus, Armchair, Sparkles, CalendarDays, CheckSquare } from "lucide-react";
+import { ArrowLeft, Plus, UserPlus, Sparkles, CalendarIcon, Save, Pencil } from "lucide-react";
 import { toast } from "sonner";
+import { format } from "date-fns";
+import { nl } from "date-fns/locale";
+import { cn } from "@/lib/utils";
 import EventAgenda from "@/components/EventAgenda";
 import EventTodos from "@/components/EventTodos";
 
@@ -25,31 +31,36 @@ export default function EventDetailPage() {
   const [guests, setGuests] = useState<any[]>([]);
   const [rounds, setRounds] = useState<any[]>([]);
   const [members, setMembers] = useState<any[]>([]);
+  const [regions, setRegions] = useState<any[]>([]);
   const [addMemberDialog, setAddMemberDialog] = useState(false);
   const [addGuestDialog, setAddGuestDialog] = useState(false);
   const [selectedMember, setSelectedMember] = useState("");
   const [guestForm, setGuestForm] = useState({ first_name: "", last_name: "", email: "", company_name: "" });
   const [seatingVersions, setSeatingVersions] = useState<any[]>([]);
 
+  // Edit state
+  const [editing, setEditing] = useState(false);
+  const [editForm, setEditForm] = useState<any>({});
+
   const fetchAll = async () => {
     if (!id) return;
-    const [ev, regs, gs, rnds, vers, allProfiles] = await Promise.all([
+    const [ev, regs, gs, rnds, vers, allProfiles, regs2] = await Promise.all([
       supabase.from("events").select("*, regions(name)").eq("id", id).single(),
       supabase.from("event_registrations").select("*").eq("event_id", id),
       supabase.from("event_guests").select("*").eq("event_id", id),
       supabase.from("event_rounds").select("*, event_tables(*, table_seats(*))").eq("event_id", id).order("round_number"),
       supabase.from("seating_versions").select("*").eq("event_id", id).order("version_number", { ascending: false }),
       supabase.from("profiles").select("id, first_name, last_name, company_name, membership_level, regions(name)"),
+      supabase.from("regions").select("id, name").order("name"),
     ]);
     setEvent(ev.data);
+    setRegions(regs2.data || []);
 
-    // Build profile lookup map
     const profileMap: Record<string, any> = {};
     for (const p of allProfiles.data || []) {
       profileMap[p.id] = p;
     }
 
-    // Enrich registrations with profile data
     const enrichedRegs = (regs.data || []).map((r: any) => ({
       ...r,
       profiles: profileMap[r.member_id] || null,
@@ -57,7 +68,6 @@ export default function EventDetailPage() {
     setRegistrations(enrichedRegs);
     setGuests(gs.data || []);
 
-    // Enrich table seats with profile data
     const enrichedRounds = (rnds.data || []).map((round: any) => ({
       ...round,
       event_tables: (round.event_tables || []).map((table: any) => ({
@@ -77,6 +87,47 @@ export default function EventDetailPage() {
   useEffect(() => {
     supabase.from("profiles").select("id, first_name, last_name, company_name").order("last_name").then(({ data }) => setMembers(data || []));
   }, []);
+
+  const startEditing = () => {
+    setEditForm({
+      title: event.title || "",
+      description: event.description || "",
+      event_date: event.event_date || "",
+      start_time: event.start_time || "",
+      end_time: event.end_time || "",
+      location_name: event.location_name || "",
+      location_address: event.location_address || "",
+      capacity: event.capacity ?? "",
+      price: event.price ?? "",
+      region_id: event.region_id || "",
+      is_published: event.is_published || false,
+    });
+    setEditing(true);
+  };
+
+  const saveEvent = async () => {
+    if (!id) return;
+    const updates: any = {
+      title: editForm.title,
+      description: editForm.description || null,
+      event_date: editForm.event_date,
+      start_time: editForm.start_time || null,
+      end_time: editForm.end_time || null,
+      location_name: editForm.location_name || null,
+      location_address: editForm.location_address || null,
+      capacity: editForm.capacity ? Number(editForm.capacity) : null,
+      price: editForm.price ? Number(editForm.price) : null,
+      region_id: editForm.region_id,
+      is_published: editForm.is_published,
+    };
+    const { error } = await supabase.from("events").update(updates).eq("id", id);
+    if (error) toast.error(error.message);
+    else {
+      toast.success("Event bijgewerkt");
+      setEditing(false);
+      fetchAll();
+    }
+  };
 
   const addRegistration = async () => {
     if (!selectedMember || !id) return;
@@ -126,7 +177,7 @@ export default function EventDetailPage() {
     <div className="space-y-6">
       <div className="flex items-center gap-4">
         <Button variant="ghost" size="sm" onClick={() => navigate("/events")}><ArrowLeft size={16} /></Button>
-        <div>
+        <div className="flex-1">
           <h1 className="text-3xl font-display font-bold">{event.title}</h1>
           <p className="text-muted-foreground">
             {event.regions?.name} · {new Date(event.event_date).toLocaleDateString("nl-NL")}
@@ -135,13 +186,172 @@ export default function EventDetailPage() {
         </div>
       </div>
 
-      <Tabs defaultValue="attendees">
+      <Tabs defaultValue="details">
         <TabsList>
-          <TabsTrigger value="attendees">Deelnemers ({registrations.length + guests.length})</TabsTrigger>
-          <TabsTrigger value="seating">Tafelindeling ({rounds.length} rondes)</TabsTrigger>
+          <TabsTrigger value="details">Details</TabsTrigger>
           <TabsTrigger value="agenda">Agenda</TabsTrigger>
           <TabsTrigger value="todos">To-do</TabsTrigger>
+          <TabsTrigger value="attendees">Deelnemers ({registrations.length + guests.length})</TabsTrigger>
+          <TabsTrigger value="seating">Tafelindeling ({rounds.length})</TabsTrigger>
         </TabsList>
+
+        <TabsContent value="details" className="space-y-4">
+          <div className="flex justify-end">
+            {!editing ? (
+              <Button size="sm" variant="outline" onClick={startEditing}><Pencil size={14} className="mr-1" />Bewerken</Button>
+            ) : (
+              <div className="flex gap-2">
+                <Button size="sm" variant="ghost" onClick={() => setEditing(false)}>Annuleren</Button>
+                <Button size="sm" onClick={saveEvent}><Save size={14} className="mr-1" />Opslaan</Button>
+              </div>
+            )}
+          </div>
+
+          {!editing ? (
+            <Card>
+              <CardContent className="pt-6 space-y-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  <div className="space-y-3">
+                    <div>
+                      <p className="text-xs text-muted-foreground">Titel</p>
+                      <p className="font-medium">{event.title}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs text-muted-foreground">Datum</p>
+                      <p className="font-medium">{new Date(event.event_date).toLocaleDateString("nl-NL", { weekday: "long", year: "numeric", month: "long", day: "numeric" })}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs text-muted-foreground">Tijd</p>
+                      <p className="font-medium">
+                        {event.start_time ? event.start_time.slice(0, 5) : "—"}
+                        {event.end_time ? ` – ${event.end_time.slice(0, 5)}` : ""}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-xs text-muted-foreground">Regio</p>
+                      <p className="font-medium">{event.regions?.name || "—"}</p>
+                    </div>
+                  </div>
+                  <div className="space-y-3">
+                    <div>
+                      <p className="text-xs text-muted-foreground">Locatie</p>
+                      <p className="font-medium">{event.location_name || "—"}</p>
+                      {event.location_address && <p className="text-sm text-muted-foreground">{event.location_address}</p>}
+                    </div>
+                    <div>
+                      <p className="text-xs text-muted-foreground">Capaciteit</p>
+                      <p className="font-medium">{event.capacity ?? "—"}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs text-muted-foreground">Prijs</p>
+                      <p className="font-medium">{event.price != null ? `€ ${Number(event.price).toFixed(2)}` : "Gratis"}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs text-muted-foreground">Status</p>
+                      <p className={cn("font-medium", event.is_published ? "text-green-600" : "text-muted-foreground")}>
+                        {event.is_published ? "Gepubliceerd" : "Concept"}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+                {event.description && (
+                  <div>
+                    <p className="text-xs text-muted-foreground mb-1">Omschrijving</p>
+                    <p className="text-sm whitespace-pre-wrap">{event.description}</p>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          ) : (
+            <Card>
+              <CardContent className="pt-6 space-y-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label>Titel</Label>
+                    <Input value={editForm.title} onChange={e => setEditForm((f: any) => ({ ...f, title: e.target.value }))} />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Regio</Label>
+                    <Select value={editForm.region_id} onValueChange={v => setEditForm((f: any) => ({ ...f, region_id: v }))}>
+                      <SelectTrigger><SelectValue placeholder="Kies regio" /></SelectTrigger>
+                      <SelectContent>
+                        {regions.map(r => <SelectItem key={r.id} value={r.id}>{r.name}</SelectItem>)}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Datum</Label>
+                    <Popover>
+                      <PopoverTrigger asChild>
+                        <Button variant="outline" className={cn("w-full justify-start text-left font-normal", !editForm.event_date && "text-muted-foreground")}>
+                          <CalendarIcon className="mr-2 h-4 w-4" />
+                          {editForm.event_date ? format(new Date(editForm.event_date), "d MMMM yyyy", { locale: nl }) : "Kies datum"}
+                        </Button>
+                      </PopoverTrigger>
+                      <PopoverContent className="w-auto p-0" align="start">
+                        <Calendar
+                          mode="single"
+                          selected={editForm.event_date ? new Date(editForm.event_date) : undefined}
+                          onSelect={d => d && setEditForm((f: any) => ({ ...f, event_date: format(d, "yyyy-MM-dd") }))}
+                          initialFocus
+                          className="p-3 pointer-events-auto"
+                        />
+                      </PopoverContent>
+                    </Popover>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <div className="space-y-2">
+                      <Label>Starttijd</Label>
+                      <Input type="time" value={editForm.start_time} onChange={e => setEditForm((f: any) => ({ ...f, start_time: e.target.value }))} />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Eindtijd</Label>
+                      <Input type="time" value={editForm.end_time} onChange={e => setEditForm((f: any) => ({ ...f, end_time: e.target.value }))} />
+                    </div>
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Locatienaam</Label>
+                    <Input value={editForm.location_name} onChange={e => setEditForm((f: any) => ({ ...f, location_name: e.target.value }))} placeholder="Bijv. Hotel Krasnapolsky" />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Adres</Label>
+                    <Input value={editForm.location_address} onChange={e => setEditForm((f: any) => ({ ...f, location_address: e.target.value }))} placeholder="Straat, stad" />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Capaciteit</Label>
+                    <Input type="number" value={editForm.capacity} onChange={e => setEditForm((f: any) => ({ ...f, capacity: e.target.value }))} placeholder="Max deelnemers" />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Prijs (€)</Label>
+                    <Input type="number" step="0.01" value={editForm.price} onChange={e => setEditForm((f: any) => ({ ...f, price: e.target.value }))} placeholder="0.00" />
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <Label>Omschrijving</Label>
+                  <Textarea value={editForm.description} onChange={e => setEditForm((f: any) => ({ ...f, description: e.target.value }))} rows={4} placeholder="Beschrijf het event..." />
+                </div>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="checkbox"
+                    id="is_published"
+                    checked={editForm.is_published}
+                    onChange={e => setEditForm((f: any) => ({ ...f, is_published: e.target.checked }))}
+                    className="rounded border-input"
+                  />
+                  <Label htmlFor="is_published">Gepubliceerd</Label>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+        </TabsContent>
+
+        <TabsContent value="agenda">
+          <EventAgenda eventId={id!} />
+        </TabsContent>
+
+        <TabsContent value="todos">
+          <EventTodos eventId={id!} />
+        </TabsContent>
 
         <TabsContent value="attendees" className="space-y-4">
           <div className="flex gap-2">
@@ -293,7 +503,7 @@ export default function EventDetailPage() {
                       </div>
                       <div className="flex items-center gap-2">
                         {v.score && <span className="text-sm font-medium text-primary">Score: {v.score}</span>}
-                        <span className={`text-xs px-2 py-1 rounded-full ${v.status === "gepubliceerd" ? "bg-success/10 text-success" : "bg-muted text-muted-foreground"}`}>
+                        <span className={cn("text-xs px-2 py-1 rounded-full", v.status === "gepubliceerd" ? "bg-green-100 text-green-700" : "bg-muted text-muted-foreground")}>
                           {v.status}
                         </span>
                       </div>
@@ -303,13 +513,6 @@ export default function EventDetailPage() {
               </CardContent>
             </Card>
           )}
-        </TabsContent>
-        <TabsContent value="agenda">
-          <EventAgenda eventId={id!} />
-        </TabsContent>
-
-        <TabsContent value="todos">
-          <EventTodos eventId={id!} />
         </TabsContent>
       </Tabs>
     </div>
