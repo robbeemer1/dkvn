@@ -13,8 +13,20 @@ export default function Dashboard() {
 
   useEffect(() => {
     const fetchStats = async () => {
+      // Get org member IDs to exclude from member count
+      const { data: orgRoles } = await supabase
+        .from("user_roles")
+        .select("user_id")
+        .in("role", ["super_admin", "region_admin", "event_organizer"]);
+      const orgIds = [...new Set((orgRoles || []).map(r => r.user_id))];
+
+      let membersQuery = supabase.from("profiles").select("id", { count: "exact", head: true });
+      if (orgIds.length > 0) {
+        membersQuery = membersQuery.not("id", "in", `(${orgIds.join(",")})`);
+      }
+
       const [members, events, upcoming, meetings, recent] = await Promise.all([
-        supabase.from("profiles").select("id", { count: "exact", head: true }),
+        membersQuery,
         supabase.from("events").select("id", { count: "exact", head: true }),
         supabase.from("events").select("id", { count: "exact", head: true }).gte("event_date", new Date().toISOString().split("T")[0]),
         supabase.from("meeting_history").select("id", { count: "exact", head: true }),
