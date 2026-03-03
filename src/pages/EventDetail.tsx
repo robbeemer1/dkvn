@@ -21,6 +21,7 @@ import { nl } from "date-fns/locale";
 import { cn } from "@/lib/utils";
 import EventAgenda from "@/components/EventAgenda";
 import EventTodos from "@/components/EventTodos";
+import PasteAttendees from "@/components/PasteAttendees";
 
 export default function EventDetailPage() {
   const { id } = useParams<{ id: string }>();
@@ -387,6 +388,7 @@ export default function EventDetailPage() {
                 </div>
               </DialogContent>
             </Dialog>
+            <PasteAttendees eventId={id!} existingMemberIds={registrations.map(r => r.member_id)} onDone={fetchAll} />
             <Dialog open={addGuestDialog} onOpenChange={setAddGuestDialog}>
               <DialogTrigger asChild><Button size="sm" variant="outline"><Plus size={14} className="mr-1" />Gast toevoegen</Button></DialogTrigger>
               <DialogContent>
