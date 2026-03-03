@@ -663,7 +663,7 @@ export type Database = {
         | "aanwezig"
         | "afgemeld"
         | "no_show"
-      membership_level: "goud" | "zilver" | "brons" | "gastlid"
+      membership_level: "goud" | "zilver" | "brons" | "gastlid" | "gast"
       seating_version_status: "concept" | "gepubliceerd"
       task_status: "todo" | "in_progress" | "done"
     }
@@ -807,7 +807,7 @@ export const Constants = {
         "afgemeld",
         "no_show",
       ],
-      membership_level: ["goud", "zilver", "brons", "gastlid"],
+      membership_level: ["goud", "zilver", "brons", "gastlid", "gast"],
       seating_version_status: ["concept", "gepubliceerd"],
       task_status: ["todo", "in_progress", "done"],
     },

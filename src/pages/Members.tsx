@@ -226,6 +226,7 @@ export default function MembersPage() {
               <SelectItem value="zilver">Zilver</SelectItem>
               <SelectItem value="brons">Brons</SelectItem>
               <SelectItem value="gastlid">Gastlid</SelectItem>
+              <SelectItem value="gast">Gast</SelectItem>
             </SelectContent>
           </Select>
           <DialogFooter>
