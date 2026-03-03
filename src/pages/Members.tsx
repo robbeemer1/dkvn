@@ -1,12 +1,23 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
+import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { MembershipBadge, RegionBadge } from "@/components/Badges";
 import { Search } from "lucide-react";
+import { cn } from "@/lib/utils";
+
+const LEVELS = [
+  { value: "all", label: "Alle" },
+  { value: "goud", label: "Goud" },
+  { value: "zilver", label: "Zilver" },
+  { value: "brons", label: "Brons" },
+  { value: "gastlid", label: "Gastlid" },
+  { value: "gast", label: "Gast (geen)" },
+] as const;
 
 export default function MembersPage() {
   const navigate = useNavigate();
@@ -14,10 +25,14 @@ export default function MembersPage() {
   const [regions, setRegions] = useState<any[]>([]);
   const [search, setSearch] = useState("");
   const [regionFilter, setRegionFilter] = useState("all");
+  const [levelFilter, setLevelFilter] = useState("all");
 
   const fetchMembers = async () => {
     let query = supabase.from("profiles").select("*, regions(name)").order("last_name").order("first_name");
     if (regionFilter !== "all") query = query.eq("region_id", regionFilter);
+    if (levelFilter !== "all" && levelFilter !== "gast") {
+      query = query.eq("membership_level", levelFilter as any);
+    }
     if (search) query = query.or(`first_name.ilike.%${search}%,last_name.ilike.%${search}%,company_name.ilike.%${search}%`);
     const { data } = await query;
     setMembers(data || []);
@@ -27,7 +42,7 @@ export default function MembersPage() {
     supabase.from("regions").select("*").order("name").then(({ data }) => setRegions(data || []));
   }, []);
 
-  useEffect(() => { fetchMembers(); }, [search, regionFilter]);
+  useEffect(() => { fetchMembers(); }, [search, regionFilter, levelFilter]);
 
   return (
     <div className="space-y-6">
@@ -48,6 +63,20 @@ export default function MembersPage() {
             {regions.map(r => <SelectItem key={r.id} value={r.id}>{r.name}</SelectItem>)}
           </SelectContent>
         </Select>
+      </div>
+
+      <div className="flex flex-wrap gap-1.5">
+        {LEVELS.map(l => (
+          <Button
+            key={l.value}
+            variant={levelFilter === l.value ? "default" : "outline"}
+            size="sm"
+            className={cn("text-xs", levelFilter === l.value ? "" : "text-muted-foreground")}
+            onClick={() => setLevelFilter(l.value)}
+          >
+            {l.label}
+          </Button>
+        ))}
       </div>
 
       <Card>
