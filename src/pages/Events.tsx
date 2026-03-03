@@ -41,10 +41,11 @@ export default function EventsPage() {
 
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!form.region_id) { toast.error("Kies een regio"); return; }
     const { error } = await supabase.from("events").insert({
       title: form.title,
       description: form.description || null,
-      region_id: form.region_id,
+      region_id: form.region_id || null,
       event_date: form.event_date,
       start_time: form.start_time || null,
       end_time: form.end_time || null,
