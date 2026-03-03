@@ -128,8 +128,18 @@ export default function PasteAttendees({ eventId, existingMemberIds, onDone }: P
       if (res.error) throw new Error(res.error.message || "Fout bij opslaan");
       if (res.data?.error) throw new Error(res.data.error);
 
-      const total = matched.length + selectedGuests.length;
-      toast.success(`${total} deelnemer${total !== 1 ? "s" : ""} toegevoegd`);
+      const added = Number(res.data?.added ?? 0);
+      const failed = Array.isArray(res.data?.failed) ? res.data.failed : [];
+
+      if (added > 0) {
+        toast.success(`${added} deelnemer${added !== 1 ? "s" : ""} toegevoegd`);
+      }
+      if (failed.length > 0) {
+        toast.error(`${failed.length} naam/namen konden niet als gast-lid worden aangemaakt`);
+      }
+      if (added === 0 && failed.length === 0) {
+        toast.error("Er zijn geen deelnemers toegevoegd");
+      }
       reset();
       setOpen(false);
       onDone();
@@ -219,7 +229,7 @@ export default function PasteAttendees({ eventId, existingMemberIds, onDone }: P
                 </div>
                 <p className="text-xs text-muted-foreground flex items-center gap-1">
                   <UserPlus size={12} />
-                  Geselecteerde namen worden als gast aan dit event toegevoegd.
+                  Geselecteerde namen worden als gast-lid aangemaakt en direct aan dit event gekoppeld.
                 </p>
               </div>
             )}
