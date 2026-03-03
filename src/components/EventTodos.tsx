@@ -66,12 +66,16 @@ export default function EventTodos({ eventId }: { eventId: string }) {
     setTasks((data as Task[]) || []);
   };
 
-  const fetchProfiles = async () => {
-    const { data } = await supabase.from("profiles").select("id, first_name, last_name").eq("is_active", true).order("first_name");
+  const fetchOrgMembers = async () => {
+    // Only fetch users who have a role (organization members), not regular members/guests
+    const { data: roles } = await supabase.from("user_roles").select("user_id");
+    if (!roles || roles.length === 0) { setProfiles([]); return; }
+    const userIds = [...new Set(roles.map(r => r.user_id))];
+    const { data } = await supabase.from("profiles").select("id, first_name, last_name").in("id", userIds).order("first_name");
     setProfiles(data || []);
   };
 
-  useEffect(() => { fetchTasks(); fetchProfiles(); }, [eventId]);
+  useEffect(() => { fetchTasks(); fetchOrgMembers(); }, [eventId]);
 
   const addTask = async (status: Task["status"] = "todo") => {
     if (!newTitle.trim()) return;

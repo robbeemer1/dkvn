@@ -7,6 +7,7 @@ import { MembershipBadge } from "@/components/Badges";
 import { useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
+import OrgMembers from "@/components/OrgMembers";
 
 export default function SettingsPage() {
   const { profile, refreshProfile, roles } = useAuth();
@@ -15,6 +16,8 @@ export default function SettingsPage() {
   const [company, setCompany] = useState(profile?.company_name || "");
   const [phone, setPhone] = useState(profile?.phone || "");
   const [saving, setSaving] = useState(false);
+
+  const isSuperAdmin = roles.includes("super_admin");
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -29,7 +32,7 @@ export default function SettingsPage() {
   };
 
   return (
-    <div className="space-y-6 max-w-2xl">
+    <div className="space-y-6 max-w-3xl">
       <h1 className="text-3xl font-display font-bold">Instellingen</h1>
 
       <Card>
@@ -74,6 +77,8 @@ export default function SettingsPage() {
           </form>
         </CardContent>
       </Card>
+
+      {isSuperAdmin && <OrgMembers />}
     </div>
   );
 }
