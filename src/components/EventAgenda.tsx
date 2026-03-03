@@ -77,11 +77,11 @@ export default function EventAgenda({ eventId }: { eventId: string }) {
       <div className={isMobile ? "grid grid-cols-2 gap-2" : "contents"}>
         <div className={isMobile ? "space-y-1" : "w-[100px] space-y-1"}>
           <Label className="text-xs text-muted-foreground">Start</Label>
-          <Input type="time" value={newStart} onChange={e => setNewStart(e.target.value)} />
+          <Input type="time" value={newStart} onChange={e => setNewStart(e.target.value)} className="h-9 text-sm" />
         </div>
         <div className={isMobile ? "space-y-1" : "w-[100px] space-y-1"}>
           <Label className="text-xs text-muted-foreground">Eind</Label>
-          <Input type="time" value={newEnd} onChange={e => setNewEnd(e.target.value)} />
+          <Input type="time" value={newEnd} onChange={e => setNewEnd(e.target.value)} className="h-9 text-sm" />
         </div>
       </div>
       {isMobile ? (
