@@ -2,9 +2,12 @@ import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { Card, CardContent } from "@/components/ui/card";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Plus, Trash2, GripVertical, Clock } from "lucide-react";
 import { toast } from "sonner";
+import { useIsMobile } from "@/hooks/use-mobile";
 
 interface AgendaItem {
   id: string;
@@ -21,6 +24,8 @@ export default function EventAgenda({ eventId }: { eventId: string }) {
   const [newTitle, setNewTitle] = useState("");
   const [newStart, setNewStart] = useState("");
   const [newEnd, setNewEnd] = useState("");
+  const [dialogOpen, setDialogOpen] = useState(false);
+  const isMobile = useIsMobile();
 
   const fetchItems = async () => {
     const { data } = await supabase
@@ -48,6 +53,7 @@ export default function EventAgenda({ eventId }: { eventId: string }) {
       setNewTitle("");
       setNewStart("");
       setNewEnd("");
+      setDialogOpen(false);
       fetchItems();
     }
   };
@@ -62,36 +68,58 @@ export default function EventAgenda({ eventId }: { eventId: string }) {
     fetchItems();
   };
 
+  const addForm = (
+    <div className={isMobile ? "space-y-4" : "flex gap-2 items-end"}>
+      <div className={isMobile ? "space-y-1" : "flex-1 space-y-1"}>
+        <Label className="text-xs text-muted-foreground">Onderdeel</Label>
+        <Input value={newTitle} onChange={e => setNewTitle(e.target.value)} placeholder="Bijv. Ontvangst met koffie" onKeyDown={e => e.key === "Enter" && addItem()} />
+      </div>
+      <div className={isMobile ? "grid grid-cols-2 gap-2" : "contents"}>
+        <div className={isMobile ? "space-y-1" : "w-[100px] space-y-1"}>
+          <Label className="text-xs text-muted-foreground">Start</Label>
+          <Input type="time" value={newStart} onChange={e => setNewStart(e.target.value)} />
+        </div>
+        <div className={isMobile ? "space-y-1" : "w-[100px] space-y-1"}>
+          <Label className="text-xs text-muted-foreground">Eind</Label>
+          <Input type="time" value={newEnd} onChange={e => setNewEnd(e.target.value)} />
+        </div>
+      </div>
+      {isMobile ? (
+        <Button className="w-full" onClick={addItem}><Plus size={14} className="mr-1" />Toevoegen</Button>
+      ) : (
+        <Button size="sm" onClick={addItem}><Plus size={14} className="mr-1" />Toevoegen</Button>
+      )}
+    </div>
+  );
+
   return (
     <div className="space-y-4">
-      <Card>
-        <CardContent className="pt-6">
-          <div className="flex gap-2 items-end">
-            <div className="flex-1 space-y-1">
-              <label className="text-xs text-muted-foreground">Onderdeel</label>
-              <Input value={newTitle} onChange={e => setNewTitle(e.target.value)} placeholder="Bijv. Ontvangst met koffie" onKeyDown={e => e.key === "Enter" && addItem()} />
-            </div>
-            <div className="w-[100px] space-y-1">
-              <label className="text-xs text-muted-foreground">Start</label>
-              <Input type="time" value={newStart} onChange={e => setNewStart(e.target.value)} />
-            </div>
-            <div className="w-[100px] space-y-1">
-              <label className="text-xs text-muted-foreground">Eind</label>
-              <Input type="time" value={newEnd} onChange={e => setNewEnd(e.target.value)} />
-            </div>
-            <Button size="sm" onClick={addItem}><Plus size={14} className="mr-1" />Toevoegen</Button>
-          </div>
-        </CardContent>
-      </Card>
+      {isMobile ? (
+        <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+          <DialogTrigger asChild>
+            <Button size="sm"><Plus size={14} className="mr-1" />Agenda-item toevoegen</Button>
+          </DialogTrigger>
+          <DialogContent>
+            <DialogHeader><DialogTitle className="font-display">Agenda-item toevoegen</DialogTitle></DialogHeader>
+            {addForm}
+          </DialogContent>
+        </Dialog>
+      ) : (
+        <Card>
+          <CardContent className="pt-6">
+            {addForm}
+          </CardContent>
+        </Card>
+      )}
 
       {items.length === 0 ? (
         <Card><CardContent className="py-8 text-center text-muted-foreground text-sm">Nog geen agenda-items. Voeg onderdelen toe aan de agenda.</CardContent></Card>
       ) : (
         <div className="space-y-1">
-          {items.map((item, idx) => (
-            <div key={item.id} className="flex items-center gap-3 px-4 py-3 rounded-lg border bg-card hover:bg-muted/30 group">
-              <GripVertical size={14} className="text-muted-foreground/40" />
-              <div className="flex items-center gap-2 w-[140px] shrink-0 text-sm text-muted-foreground">
+          {items.map((item) => (
+            <div key={item.id} className="flex items-center gap-2 sm:gap-3 px-3 sm:px-4 py-3 rounded-lg border bg-card hover:bg-muted/30 group">
+              <GripVertical size={14} className="text-muted-foreground/40 hidden sm:block" />
+              <div className="flex items-center gap-2 w-[100px] sm:w-[140px] shrink-0 text-xs sm:text-sm text-muted-foreground">
                 <Clock size={12} />
                 {item.start_time ? (
                   <span>{item.start_time.slice(0, 5)}{item.end_time ? ` – ${item.end_time.slice(0, 5)}` : ""}</span>
