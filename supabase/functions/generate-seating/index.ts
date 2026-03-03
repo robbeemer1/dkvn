@@ -10,7 +10,7 @@ serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
   try {
-    const { event_id, table_size = 8 } = await req.json();
+    const { event_id, num_tables, table_hosts = {} } = await req.json();
     if (!event_id) throw new Error("event_id is required");
 
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
@@ -45,6 +45,21 @@ serve(async (req) => {
 
     if (!rounds || rounds.length === 0) throw new Error("Geen rondes gevonden. Voeg eerst rondes toe.");
 
+    // Determine number of tables
+    const numTables = num_tables || Math.ceil(totalAttendees / 8);
+    const tableSize = Math.ceil(totalAttendees / numTables);
+
+    // Parse table_hosts: { "1": memberId, "2": memberId } -> map tableIndex (0-based) to memberId
+    const hostMap: Record<number, string> = {};
+    const hostMemberIds = new Set<string>();
+    for (const [tableNumStr, memberId] of Object.entries(table_hosts)) {
+      const idx = parseInt(tableNumStr) - 1; // convert 1-based to 0-based
+      if (idx >= 0 && idx < numTables && typeof memberId === "string" && memberId) {
+        hostMap[idx] = memberId;
+        hostMemberIds.add(memberId);
+      }
+    }
+
     // Get meeting history for these members
     const { data: history } = await supabase
       .from("meeting_history")
@@ -59,11 +74,8 @@ serve(async (req) => {
       meetingCounts[key] = (meetingCounts[key] || 0) + 1;
     });
 
-    const numTables = Math.ceil(totalAttendees / table_size);
-    const allSeatingAssignments: any[] = [];
-    const roundAssignments: Record<string, string[][]> = {}; // roundId -> tables of member arrays
+    const roundAssignments: Record<string, string[][]> = {};
 
-    // For each round, generate seating using greedy + local search
     for (const round of rounds) {
       // Clear existing tables and seats for this round
       const { data: existingTables } = await supabase.from("event_tables").select("id").eq("round_id", round.id);
@@ -72,33 +84,36 @@ serve(async (req) => {
         await supabase.from("event_tables").delete().eq("round_id", round.id);
       }
 
-      // Shuffle attendees
-      const attendees = [...memberIds, ...guestIds.map(g => `guest:${g}`)];
-      for (let i = attendees.length - 1; i > 0; i--) {
-        const j = Math.floor(Math.random() * (i + 1));
-        [attendees[i], attendees[j]] = [attendees[j], attendees[i]];
+      // Initialize tables with hosts pre-assigned
+      const tables: string[][] = Array.from({ length: numTables }, () => []);
+      for (const [idx, memberId] of Object.entries(hostMap)) {
+        tables[Number(idx)].push(memberId);
       }
 
-      // Create tables
-      const tables: string[][] = Array.from({ length: numTables }, () => []);
-      
-      // Greedy assignment: place each person at the table with fewest existing meetings
-      for (const person of attendees) {
+      // Remaining attendees (exclude hosts)
+      const remaining = [...memberIds.filter(id => !hostMemberIds.has(id)), ...guestIds.map(g => `guest:${g}`)];
+      // Shuffle
+      for (let i = remaining.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [remaining[i], remaining[j]] = [remaining[j], remaining[i]];
+      }
+
+      // Greedy assignment
+      for (const person of remaining) {
         let bestTable = 0;
         let bestScore = Infinity;
         for (let t = 0; t < numTables; t++) {
-          if (tables[t].length >= table_size) continue;
+          if (tables[t].length >= tableSize) continue;
           let score = 0;
           for (const existing of tables[t]) {
             if (!person.startsWith("guest:") && !existing.startsWith("guest:")) {
               score += meetingCounts[pairKey(person, existing)] || 0;
             }
-            // Also check within-event previous rounds
             for (const prevRoundId of Object.keys(roundAssignments)) {
               const prevTables = roundAssignments[prevRoundId];
               for (const prevTable of prevTables) {
                 if (prevTable.includes(person) && prevTable.includes(existing)) {
-                  score += 10; // Heavy penalty for same table in same event
+                  score += 10;
                 }
               }
             }
@@ -108,7 +123,7 @@ serve(async (req) => {
         tables[bestTable].push(person);
       }
 
-      // Local search: try random swaps to improve
+      // Local search: try random swaps (but never swap hosts away from their table)
       for (let iter = 0; iter < 500; iter++) {
         const t1 = Math.floor(Math.random() * numTables);
         const t2 = Math.floor(Math.random() * numTables);
@@ -116,13 +131,18 @@ serve(async (req) => {
         const i1 = Math.floor(Math.random() * tables[t1].length);
         const i2 = Math.floor(Math.random() * tables[t2].length);
 
+        // Don't swap hosts
+        const person1 = tables[t1][i1];
+        const person2 = tables[t2][i2];
+        if (hostMap[t1] === person1 || hostMap[t2] === person2) continue;
+
         const scoreBefore = tableScore(tables[t1], meetingCounts, pairKey, roundAssignments)
           + tableScore(tables[t2], meetingCounts, pairKey, roundAssignments);
         [tables[t1][i1], tables[t2][i2]] = [tables[t2][i2], tables[t1][i1]];
         const scoreAfter = tableScore(tables[t1], meetingCounts, pairKey, roundAssignments)
           + tableScore(tables[t2], meetingCounts, pairKey, roundAssignments);
         if (scoreAfter >= scoreBefore) {
-          [tables[t1][i1], tables[t2][i2]] = [tables[t2][i2], tables[t1][i1]]; // Swap back
+          [tables[t1][i1], tables[t2][i2]] = [tables[t2][i2], tables[t1][i1]];
         }
       }
 
@@ -131,8 +151,10 @@ serve(async (req) => {
       // Save to DB
       for (let t = 0; t < tables.length; t++) {
         if (tables[t].length === 0) continue;
+        const hostId = hostMap[t] || null;
         const { data: tableRow } = await supabase.from("event_tables").insert({
-          round_id: round.id, table_number: t + 1, table_name: `Tafel ${t + 1}`, capacity: table_size,
+          round_id: round.id, table_number: t + 1, table_name: `Tafel ${t + 1}`,
+          capacity: tableSize, host_member_id: hostId,
         }).select().single();
 
         if (tableRow) {
@@ -197,7 +219,7 @@ serve(async (req) => {
 
     return new Response(JSON.stringify({
       success: true, score, new_meetings: totalNewMeetings, repeats: totalRepeats,
-      message: `Indeling versie ${nextVersion} gegenereerd. Score: ${score}% (${totalNewMeetings} nieuwe ontmoetingen, ${totalRepeats} herhalingen).`,
+      message: `Indeling versie ${nextVersion} gegenereerd met ${numTables} tafels. Score: ${score}% (${totalNewMeetings} nieuwe ontmoetingen, ${totalRepeats} herhalingen).`,
     }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
 
   } catch (e) {
