@@ -14,7 +14,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Calendar } from "@/components/ui/calendar";
 import { MembershipBadge, StatusBadge, RegionBadge } from "@/components/Badges";
-import { ArrowLeft, Plus, UserPlus, Sparkles, CalendarIcon, Save, Pencil, Trash2, RotateCcw, X } from "lucide-react";
+import { ArrowLeft, Plus, UserPlus, Sparkles, CalendarIcon, Save, Pencil, Trash2, RotateCcw, X, Printer } from "lucide-react";
 import { toast } from "sonner";
 import { format } from "date-fns";
 import { nl } from "date-fns/locale";
@@ -24,6 +24,7 @@ import EventTodos from "@/components/EventTodos";
 import PasteAttendees from "@/components/PasteAttendees";
 import SearchableSelect from "@/components/SearchableSelect";
 import ConfirmDialog from "@/components/ConfirmDialog";
+import { printAttendeesPdf, printSeatingPdf } from "@/lib/printPdf";
 
 export default function EventDetailPage() {
   const { id } = useParams<{ id: string }>();
@@ -428,7 +429,13 @@ export default function EventDetailPage() {
         </TabsContent>
 
         <TabsContent value="attendees" className="space-y-4">
-          <div className="flex gap-2">
+          <div className="flex gap-2 flex-wrap">
+            <Button size="sm" variant="outline" onClick={() => {
+              const eventInfo = `${event.regions?.name || ""} · ${new Date(event.event_date).toLocaleDateString("nl-NL", { weekday: "long", day: "numeric", month: "long", year: "numeric" })}${event.location_name ? ` · ${event.location_name}` : ""}`;
+              printAttendeesPdf(event.title, eventInfo, registrations, guests);
+            }}>
+              <Printer size={14} className="mr-1" />PDF
+            </Button>
             <Dialog open={addMemberDialog} onOpenChange={setAddMemberDialog}>
               <DialogTrigger asChild><Button size="sm"><UserPlus size={14} className="mr-1" />Lid toevoegen</Button></DialogTrigger>
               <DialogContent>
@@ -582,6 +589,14 @@ export default function EventDetailPage() {
         <TabsContent value="seating" className="space-y-4">
            <div className="flex gap-2">
             <Button size="sm" onClick={addRound}><Plus size={14} className="mr-1" />Ronde toevoegen</Button>
+            {rounds.length > 0 && (
+              <Button size="sm" variant="outline" onClick={() => {
+                const eventInfo = `${event.regions?.name || ""} · ${new Date(event.event_date).toLocaleDateString("nl-NL", { weekday: "long", day: "numeric", month: "long", year: "numeric" })}${event.location_name ? ` · ${event.location_name}` : ""}`;
+                printSeatingPdf(event.title, eventInfo, rounds);
+              }}>
+                <Printer size={14} className="mr-1" />PDF
+              </Button>
+            )}
           </div>
 
           {/* Table configuration dialog */}
