@@ -86,6 +86,7 @@ export default function MembersPage() {
               <TableRow>
                 <TableHead>Naam</TableHead>
                 <TableHead>Bedrijf</TableHead>
+                <TableHead>Branche</TableHead>
                 <TableHead>Regio</TableHead>
                 <TableHead>Niveau</TableHead>
                 <TableHead>Status</TableHead>
@@ -96,6 +97,7 @@ export default function MembersPage() {
                 <TableRow key={m.id} className="cursor-pointer hover:bg-muted/50" onClick={() => navigate(`/members/${m.id}`)}>
                   <TableCell className="font-medium">{m.first_name} {m.last_name}</TableCell>
                   <TableCell className="text-muted-foreground">{m.company_name || "—"}</TableCell>
+                  <TableCell className="text-muted-foreground">{(m as any).branche || "—"}</TableCell>
                   <TableCell>{m.regions?.name ? <RegionBadge name={m.regions.name} /> : "—"}</TableCell>
                   <TableCell><MembershipBadge level={m.membership_level} /></TableCell>
                   <TableCell>
@@ -106,7 +108,7 @@ export default function MembersPage() {
                 </TableRow>
               ))}
               {members.length === 0 && (
-                <TableRow><TableCell colSpan={5} className="text-center text-muted-foreground py-8">Geen leden gevonden</TableCell></TableRow>
+                <TableRow><TableCell colSpan={6} className="text-center text-muted-foreground py-8">Geen leden gevonden</TableCell></TableRow>
               )}
             </TableBody>
           </Table>

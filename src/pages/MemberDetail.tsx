@@ -24,7 +24,7 @@ export default function MemberDetailPage() {
   const [saving, setSaving] = useState(false);
   const [form, setForm] = useState({
     first_name: "", last_name: "", email: "", phone: "",
-    company_name: "", company_role: "", region_id: "", membership_level: "gastlid",
+    company_name: "", company_role: "", branche: "", region_id: "", membership_level: "gastlid",
     is_active: true, notes: "", bio: "",
   });
 
@@ -49,6 +49,7 @@ export default function MemberDetailPage() {
         phone: data.phone || "",
         company_name: data.company_name || "",
         company_role: data.company_role || "",
+        branche: (data as any).branche || "",
         region_id: data.region_id || "",
         membership_level: data.membership_level || "gastlid",
         is_active: data.is_active ?? true,
@@ -102,6 +103,7 @@ export default function MemberDetailPage() {
       phone: form.phone || null,
       company_name: form.company_name || null,
       company_role: form.company_role || null,
+      branche: form.branche || null,
       region_id: form.region_id || null,
       membership_level: form.membership_level as any,
       is_active: form.is_active,
@@ -198,6 +200,10 @@ export default function MemberDetailPage() {
                   <Label>Functie</Label>
                   <Input value={form.company_role} onChange={e => setForm(f => ({ ...f, company_role: e.target.value }))} />
                 </div>
+              </div>
+              <div className="space-y-2">
+                <Label>Branche</Label>
+                <Input value={form.branche} onChange={e => setForm(f => ({ ...f, branche: e.target.value }))} placeholder="Branche / sector..." />
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
