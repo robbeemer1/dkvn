@@ -4,49 +4,133 @@ import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { toast } from "sonner";
+import logo from "@/assets/logo_dkvn.png";
 
 export default function ResetPasswordPage() {
   const [password, setPassword] = useState("");
+  const [firstName, setFirstName] = useState("");
+  const [lastName, setLastName] = useState("");
   const [loading, setLoading] = useState(false);
+  const [checking, setChecking] = useState(true);
+  const [isInvite, setIsInvite] = useState(false);
+  const [valid, setValid] = useState(false);
   const navigate = useNavigate();
 
   useEffect(() => {
-    // Check for recovery token in URL hash
     const hash = window.location.hash;
-    if (!hash.includes("type=recovery")) {
-      toast.error("Ongeldige resetlink.");
+    const params = new URLSearchParams(hash.replace("#", ""));
+    const type = params.get("type");
+
+    if (type === "invite" || type === "recovery" || type === "magiclink") {
+      setIsInvite(type === "invite");
+      setValid(true);
+    } else {
+      // Also listen for auth state change — Supabase may process the token automatically
+      const { data: { subscription } } = supabase.auth.onAuthStateChange((event) => {
+        if (event === "PASSWORD_RECOVERY") {
+          setIsInvite(false);
+          setValid(true);
+        } else if (event === "SIGNED_IN" || event === "TOKEN_REFRESHED") {
+          // Invite flow auto-signs in
+          setIsInvite(true);
+          setValid(true);
+        }
+      });
+
+      // Give it a moment to process, then redirect if still invalid
+      const timeout = setTimeout(() => {
+        setChecking(false);
+      }, 2000);
+
+      return () => {
+        subscription.unsubscribe();
+        clearTimeout(timeout);
+      };
+    }
+    setChecking(false);
+  }, []);
+
+  useEffect(() => {
+    if (!checking && !valid) {
+      toast.error("Ongeldige link.");
       navigate("/login");
     }
-  }, [navigate]);
+  }, [checking, valid, navigate]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
-    const { error } = await supabase.auth.updateUser({ password });
-    if (error) toast.error(error.message);
-    else {
-      toast.success("Wachtwoord gewijzigd!");
-      navigate("/");
+
+    // Update password
+    const { error: pwError } = await supabase.auth.updateUser({ password });
+    if (pwError) {
+      toast.error(pwError.message);
+      setLoading(false);
+      return;
     }
+
+    // If invite flow, also update profile with name
+    if (isInvite && (firstName || lastName)) {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user) {
+        await supabase.from("profiles").update({
+          first_name: firstName.trim(),
+          last_name: lastName.trim(),
+        }).eq("id", user.id);
+      }
+    }
+
+    toast.success(isInvite ? "Account geactiveerd! Welkom." : "Wachtwoord gewijzigd!");
+    navigate("/");
     setLoading(false);
   };
+
+  if (checking || !valid) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-background">
+        <p className="text-muted-foreground">Bezig met verifiëren...</p>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-background px-4">
       <Card className="w-full max-w-md">
         <CardHeader className="text-center">
-          <CardTitle className="text-2xl font-display">Nieuw wachtwoord instellen</CardTitle>
+          <img src={logo} alt="De Kunst van Netwerken" className="h-12 mx-auto mb-4" />
+          <CardTitle className="text-2xl font-display">
+            {isInvite ? "Account activeren" : "Nieuw wachtwoord instellen"}
+          </CardTitle>
+          {isInvite && (
+            <CardDescription>
+              Welkom! Vul je gegevens in om je account te activeren.
+            </CardDescription>
+          )}
         </CardHeader>
         <CardContent>
           <form onSubmit={handleSubmit} className="space-y-4">
+            {isInvite && (
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="firstName">Voornaam</Label>
+                  <Input id="firstName" value={firstName} onChange={e => setFirstName(e.target.value)} required />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="lastName">Achternaam</Label>
+                  <Input id="lastName" value={lastName} onChange={e => setLastName(e.target.value)} required />
+                </div>
+              </div>
+            )}
             <div className="space-y-2">
-              <Label htmlFor="password">Nieuw wachtwoord</Label>
-              <Input id="password" type="password" value={password} onChange={e => setPassword(e.target.value)} required minLength={8} />
+              <Label htmlFor="password">
+                {isInvite ? "Kies een wachtwoord" : "Nieuw wachtwoord"}
+              </Label>
+              <Input id="password" type="password" value={password} onChange={e => setPassword(e.target.value)} required minLength={8} placeholder="Minimaal 8 tekens" />
             </div>
             <Button type="submit" className="w-full" disabled={loading}>
-              {loading ? "Opslaan..." : "Wachtwoord opslaan"}
+              {loading ? "Opslaan..." : isInvite ? "Account activeren" : "Wachtwoord opslaan"}
             </Button>
           </form>
         </CardContent>
