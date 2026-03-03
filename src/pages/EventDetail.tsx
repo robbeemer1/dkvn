@@ -31,17 +31,42 @@ export default function EventDetailPage() {
 
   const fetchAll = async () => {
     if (!id) return;
-    const [ev, regs, gs, rnds, vers] = await Promise.all([
+    const [ev, regs, gs, rnds, vers, allProfiles] = await Promise.all([
       supabase.from("events").select("*, regions(name)").eq("id", id).single(),
-      supabase.from("event_registrations").select("*, profiles:member_id(first_name, last_name, company_name, membership_level, regions(name))").eq("event_id", id),
+      supabase.from("event_registrations").select("*").eq("event_id", id),
       supabase.from("event_guests").select("*").eq("event_id", id),
-      supabase.from("event_rounds").select("*, event_tables(*, table_seats(*, profiles:member_id(first_name, last_name)))").eq("event_id", id).order("round_number"),
+      supabase.from("event_rounds").select("*, event_tables(*, table_seats(*))").eq("event_id", id).order("round_number"),
       supabase.from("seating_versions").select("*").eq("event_id", id).order("version_number", { ascending: false }),
+      supabase.from("profiles").select("id, first_name, last_name, company_name, membership_level, regions(name)"),
     ]);
     setEvent(ev.data);
-    setRegistrations(regs.data || []);
+
+    // Build profile lookup map
+    const profileMap: Record<string, any> = {};
+    for (const p of allProfiles.data || []) {
+      profileMap[p.id] = p;
+    }
+
+    // Enrich registrations with profile data
+    const enrichedRegs = (regs.data || []).map((r: any) => ({
+      ...r,
+      profiles: profileMap[r.member_id] || null,
+    }));
+    setRegistrations(enrichedRegs);
     setGuests(gs.data || []);
-    setRounds(rnds.data || []);
+
+    // Enrich table seats with profile data
+    const enrichedRounds = (rnds.data || []).map((round: any) => ({
+      ...round,
+      event_tables: (round.event_tables || []).map((table: any) => ({
+        ...table,
+        table_seats: (table.table_seats || []).map((seat: any) => ({
+          ...seat,
+          profiles: seat.member_id ? profileMap[seat.member_id] || null : null,
+        })),
+      })),
+    }));
+    setRounds(enrichedRounds);
     setSeatingVersions(vers.data || []);
   };
 
