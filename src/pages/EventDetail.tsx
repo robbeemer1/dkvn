@@ -40,8 +40,8 @@ export default function EventDetailPage() {
   const [guestForm, setGuestForm] = useState({ first_name: "", last_name: "", email: "", company_name: "" });
   const [memberSearch, setMemberSearch] = useState("");
   const [seatingVersions, setSeatingVersions] = useState<any[]>([]);
+  const [configRoundId, setConfigRoundId] = useState<string | null>(null);
   const [tableConfig, setTableConfig] = useState<{ count: number; hosts: Record<number, string>; fixedMembers: Record<number, string[]> }>({ count: 0, hosts: {}, fixedMembers: {} });
-  const [showTableConfig, setShowTableConfig] = useState(false);
 
   // Edit state
   const [editing, setEditing] = useState(false);
@@ -190,18 +190,17 @@ export default function EventDetailPage() {
     else { toast.success("Ronde verwijderd"); fetchAll(); }
   };
 
-  const generateSeating = async () => {
+  const generateSeating = async (roundId: string) => {
     if (!id) return;
     toast.info("Tafelindeling wordt gegenereerd...");
     try {
-      const body: any = { event_id: id };
+      const body: any = { event_id: id, round_id: roundId };
       if (tableConfig.count > 0) body.num_tables = tableConfig.count;
       if (Object.keys(tableConfig.hosts).length > 0) body.table_hosts = tableConfig.hosts;
       if (Object.keys(tableConfig.fixedMembers).length > 0) body.table_fixed_members = tableConfig.fixedMembers;
       const res = await supabase.functions.invoke("generate-seating", { body });
       if (res.error) {
-        const msg = res.error?.message || "Fout bij genereren";
-        toast.error(msg);
+        toast.error(res.error?.message || "Fout bij genereren");
         return;
       }
       const data = res.data;
@@ -502,23 +501,14 @@ export default function EventDetailPage() {
         </TabsContent>
 
         <TabsContent value="seating" className="space-y-4">
-          <div className="flex gap-2">
+           <div className="flex gap-2">
             <Button size="sm" onClick={addRound}><Plus size={14} className="mr-1" />Ronde toevoegen</Button>
-            <Button size="sm" variant="outline" onClick={() => {
-              const activeAttendees = registrations.filter(r => ["aangemeld", "bevestigd", "aanwezig"].includes(r.status));
-              if (activeAttendees.length === 0) { toast.error("Voeg eerst deelnemers toe"); return; }
-              if (rounds.length === 0) { toast.error("Voeg eerst rondes toe"); return; }
-              if (tableConfig.count === 0) {
-                setTableConfig(prev => ({ ...prev, count: Math.max(1, Math.ceil(activeAttendees.length / 8)) }));
-              }
-              setShowTableConfig(true);
-            }}><Sparkles size={14} className="mr-1" />Genereer indeling</Button>
           </div>
 
           {/* Table configuration dialog */}
-          <Dialog open={showTableConfig} onOpenChange={setShowTableConfig}>
+          <Dialog open={configRoundId !== null} onOpenChange={open => { if (!open) setConfigRoundId(null); }}>
             <DialogContent className="max-w-lg max-h-[80vh] overflow-y-auto">
-              <DialogHeader><DialogTitle className="font-display">Tafelindeling configureren</DialogTitle></DialogHeader>
+              <DialogHeader><DialogTitle className="font-display">Tafelindeling configureren — {rounds.find(r => r.id === configRoundId)?.name || "Ronde"}</DialogTitle></DialogHeader>
               <div className="space-y-4">
                 <div className="space-y-2">
                   <Label>Aantal tafels</Label>
@@ -643,8 +633,9 @@ export default function EventDetailPage() {
                 </div>
 
                 <Button className="w-full" onClick={() => {
-                  setShowTableConfig(false);
-                  generateSeating();
+                  const rid = configRoundId;
+                  setConfigRoundId(null);
+                  if (rid) generateSeating(rid);
                 }}>
                   <Sparkles size={14} className="mr-2" />Indeling genereren
                 </Button>
@@ -660,6 +651,19 @@ export default function EventDetailPage() {
                 <CardHeader className="flex flex-row items-center justify-between space-y-0">
                   <CardTitle className="text-lg font-display">{round.name || `Ronde ${round.round_number}`}</CardTitle>
                   <div className="flex gap-1">
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="h-7 px-2 text-xs"
+                      onClick={() => {
+                        const activeAttendees = registrations.filter(r => ["aangemeld", "bevestigd", "aanwezig"].includes(r.status));
+                        if (activeAttendees.length === 0) { toast.error("Voeg eerst deelnemers toe"); return; }
+                        setTableConfig({ count: Math.max(1, Math.ceil(activeAttendees.length / 8)), hosts: {}, fixedMembers: {} });
+                        setConfigRoundId(round.id);
+                      }}
+                    >
+                      <Sparkles size={13} className="mr-1" />Genereer
+                    </Button>
                     <Button
                       size="sm"
                       variant="ghost"
