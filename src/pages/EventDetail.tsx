@@ -37,6 +37,7 @@ export default function EventDetailPage() {
   const [addGuestDialog, setAddGuestDialog] = useState(false);
   const [selectedMember, setSelectedMember] = useState("");
   const [guestForm, setGuestForm] = useState({ first_name: "", last_name: "", email: "", company_name: "" });
+  const [memberSearch, setMemberSearch] = useState("");
   const [seatingVersions, setSeatingVersions] = useState<any[]>([]);
   const [tableConfig, setTableConfig] = useState<{ count: number; hosts: Record<number, string>; fixedMembers: Record<number, string[]> }>({ count: 0, hosts: {}, fixedMembers: {} });
   const [showTableConfig, setShowTableConfig] = useState(false);
@@ -134,9 +135,11 @@ export default function EventDetailPage() {
 
   const addRegistration = async () => {
     if (!selectedMember || !id) return;
-    const { error } = await supabase.from("event_registrations").insert({ event_id: id, member_id: selectedMember });
-    if (error) toast.error(error.message);
-    else { toast.success("Lid toegevoegd"); setAddMemberDialog(false); setSelectedMember(""); fetchAll(); }
+    const res = await supabase.functions.invoke("bulk-add-attendees", {
+      body: { event_id: id, matched_ids: [selectedMember], guests: [] },
+    });
+    if (res.error || res.data?.error) toast.error(res.error?.message || res.data?.error || "Fout bij toevoegen");
+    else { toast.success("Lid toegevoegd"); setAddMemberDialog(false); setSelectedMember(""); setMemberSearch(""); fetchAll(); }
   };
 
   const addGuest = async (e: React.FormEvent) => {
@@ -376,12 +379,19 @@ export default function EventDetailPage() {
               <DialogContent>
                 <DialogHeader><DialogTitle>Lid toevoegen aan event</DialogTitle></DialogHeader>
                 <div className="space-y-4">
+                  <div className="space-y-2">
+                    <Label>Zoek lid</Label>
+                    <Input value={memberSearch} onChange={e => setMemberSearch(e.target.value)} placeholder="Zoek op naam of bedrijf" />
+                  </div>
                   <Select value={selectedMember} onValueChange={setSelectedMember}>
                     <SelectTrigger><SelectValue placeholder="Kies een lid" /></SelectTrigger>
                     <SelectContent>
-                      {members.filter(m => !registrations.some(r => r.member_id === m.id)).map(m => (
-                        <SelectItem key={m.id} value={m.id}>{m.first_name} {m.last_name} {m.company_name ? `(${m.company_name})` : ""}</SelectItem>
-                      ))}
+                      {members
+                        .filter(m => !registrations.some(r => r.member_id === m.id))
+                        .filter(m => `${m.first_name} ${m.last_name} ${m.company_name || ""}`.toLowerCase().includes(memberSearch.toLowerCase().trim()))
+                        .map(m => (
+                          <SelectItem key={m.id} value={m.id}>{m.first_name} {m.last_name} {m.company_name ? `(${m.company_name})` : ""}</SelectItem>
+                        ))}
                     </SelectContent>
                   </Select>
                   <Button onClick={addRegistration} className="w-full">Toevoegen</Button>

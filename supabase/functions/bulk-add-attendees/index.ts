@@ -3,7 +3,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
 serve(async (req) => {
@@ -18,7 +18,6 @@ serve(async (req) => {
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
     );
 
-    // Verify caller is super_admin
     const userClient = createClient(
       Deno.env.get("SUPABASE_URL")!,
       Deno.env.get("SUPABASE_ANON_KEY")!,
@@ -27,11 +26,23 @@ serve(async (req) => {
     const { data: { user } } = await userClient.auth.getUser();
     if (!user) throw new Error("Niet ingelogd");
 
-    const { data: isAdmin } = await supabaseAdmin.rpc("is_super_admin", { _user_id: user.id });
-    if (!isAdmin) throw new Error("Geen toegang");
-
-    const { event_id, matched_ids, guests } = await req.json();
+    const { event_id, matched_ids = [], guests = [] } = await req.json();
     if (!event_id) throw new Error("event_id is verplicht");
+
+    const { data: eventRow, error: eventError } = await supabaseAdmin
+      .from("events")
+      .select("id, region_id")
+      .eq("id", event_id)
+      .single();
+    if (eventError || !eventRow) throw new Error("Event niet gevonden");
+
+    const [{ data: isAdmin }, { data: isOrganizer }, { data: isRegionAdmin }] = await Promise.all([
+      supabaseAdmin.rpc("is_super_admin", { _user_id: user.id }),
+      supabaseAdmin.rpc("is_event_organizer", { _user_id: user.id, _event_id: event_id }),
+      supabaseAdmin.rpc("has_role_in_region", { _user_id: user.id, _role: "region_admin", _region_id: eventRow.region_id }),
+    ]);
+
+    if (!(isAdmin || isOrganizer || isRegionAdmin)) throw new Error("Geen toegang");
 
     let addedCount = 0;
 
