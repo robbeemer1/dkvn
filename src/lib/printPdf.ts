@@ -2,10 +2,22 @@
  * Opens a new window with formatted HTML content and triggers the browser print dialog.
  */
 export function printPdf(title: string, subtitle: string, bodyHtml: string) {
-  const win = window.open("", "_blank");
-  if (!win) return;
+  // Use a hidden iframe so the user never sees an HTML page — only the print/PDF dialog
+  const iframe = document.createElement("iframe");
+  iframe.style.position = "fixed";
+  iframe.style.right = "0";
+  iframe.style.bottom = "0";
+  iframe.style.width = "0";
+  iframe.style.height = "0";
+  iframe.style.border = "none";
+  iframe.style.opacity = "0";
+  document.body.appendChild(iframe);
 
-  win.document.write(`<!DOCTYPE html>
+  const doc = iframe.contentDocument || iframe.contentWindow?.document;
+  if (!doc) return;
+
+  doc.open();
+  doc.write(`<!DOCTYPE html>
 <html lang="nl">
 <head>
 <meta charset="utf-8" />
@@ -41,13 +53,9 @@ export function printPdf(title: string, subtitle: string, bodyHtml: string) {
   .table-card ul { list-style: none; }
   .table-card li { padding: 2px 0; font-size: 11px; color: #444; }
   .table-card li.host { font-weight: 700; color: #1a1a2e; }
-  .page-break { page-break-before: always; }
   .round-section { break-before: page; }
   .round-section:first-child { break-before: auto; }
   .footer { margin-top: 20px; padding-top: 8px; border-top: 1px solid #eee; font-size: 9px; color: #999; text-align: center; }
-  @media print {
-    .no-print { display: none !important; }
-  }
 </style>
 </head>
 <body>
@@ -62,11 +70,14 @@ export function printPdf(title: string, subtitle: string, bodyHtml: string) {
   <div class="footer">De Kunst van Netwerken</div>
 </body>
 </html>`);
-  win.document.close();
+  doc.close();
+
   setTimeout(() => {
-    win.print();
-    // Close the window after printing or cancelling
-    win.addEventListener("afterprint", () => win.close());
+    iframe.contentWindow?.print();
+    // Clean up iframe after print dialog closes
+    setTimeout(() => {
+      document.body.removeChild(iframe);
+    }, 1000);
   }, 300);
 }
 
