@@ -14,7 +14,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Calendar } from "@/components/ui/calendar";
 import { MembershipBadge, StatusBadge, RegionBadge } from "@/components/Badges";
-import { ArrowLeft, Plus, UserPlus, Sparkles, CalendarIcon, Save, Pencil, Trash2, RotateCcw } from "lucide-react";
+import { ArrowLeft, Plus, UserPlus, Sparkles, CalendarIcon, Save, Pencil, Trash2, RotateCcw, X } from "lucide-react";
 import { toast } from "sonner";
 import { format } from "date-fns";
 import { nl } from "date-fns/locale";
@@ -188,6 +188,21 @@ export default function EventDetailPage() {
     const { error } = await supabase.from("event_rounds").delete().eq("id", roundId);
     if (error) toast.error(error.message);
     else { toast.success("Ronde verwijderd"); fetchAll(); }
+  };
+
+  const removeSeat = async (seatId: string) => {
+    const { error } = await supabase.from("table_seats").delete().eq("id", seatId);
+    if (error) toast.error(error.message);
+    else fetchAll();
+  };
+
+  const addSeatToTable = async (tableId: string, memberId: string) => {
+    // Find highest seat number in that table
+    const { data: existing } = await supabase.from("table_seats").select("seat_number").eq("table_id", tableId).order("seat_number", { ascending: false }).limit(1);
+    const nextSeat = ((existing?.[0]?.seat_number) || 0) + 1;
+    const { error } = await supabase.from("table_seats").insert({ table_id: tableId, member_id: memberId, seat_number: nextSeat });
+    if (error) toast.error(error.message);
+    else fetchAll();
   };
 
   const generateSeating = async (roundId: string) => {
@@ -707,15 +722,52 @@ export default function EventDetailPage() {
                               {table.table_seats
                                 .sort((a: any, b: any) => (a.seat_number || 0) - (b.seat_number || 0))
                                 .map((seat: any) => (
-                                <li key={seat.id} className={cn("text-muted-foreground", seat.member_id === table.host_member_id && "font-semibold text-foreground")}>
-                                  • {seat.profiles ? `${seat.profiles.first_name} ${seat.profiles.last_name}`.trim() : `Stoel ${seat.seat_number || '?'}`}
-                                  {seat.member_id === table.host_member_id && " ★"}
+                                <li key={seat.id} className={cn("flex items-center justify-between group", seat.member_id === table.host_member_id ? "text-foreground font-semibold" : "text-muted-foreground")}>
+                                  <span>
+                                    • {seat.profiles ? `${seat.profiles.first_name} ${seat.profiles.last_name}`.trim() : `Stoel ${seat.seat_number || '?'}`}
+                                    {seat.member_id === table.host_member_id && " ★"}
+                                  </span>
+                                  <button
+                                    type="button"
+                                    className="opacity-0 group-hover:opacity-100 text-destructive hover:text-destructive/80 transition-opacity p-0.5"
+                                    title="Verwijder van tafel"
+                                    onClick={() => removeSeat(seat.id)}
+                                  >
+                                    <X size={12} />
+                                  </button>
                                 </li>
                               ))}
                             </ul>
                           ) : (
                             <p className="text-xs text-muted-foreground">Nog geen stoelen toegewezen</p>
                           )}
+                          {/* Add member if space available */}
+                          {(table.table_seats?.length || 0) < table.capacity && (() => {
+                            const seatedInRound = new Set<string>();
+                            for (const t of round.event_tables || []) {
+                              for (const s of t.table_seats || []) {
+                                if (s.member_id) seatedInRound.add(s.member_id);
+                              }
+                            }
+                            const available = registrations
+                              .filter((r: any) => ["aangemeld", "bevestigd", "aanwezig"].includes(r.status) && !seatedInRound.has(r.member_id))
+                              .map((r: any) => ({
+                                value: r.member_id,
+                                label: `${r.profiles?.first_name} ${r.profiles?.last_name}${r.profiles?.company_name ? ` (${r.profiles.company_name})` : ""}`,
+                              }));
+                            return available.length > 0 ? (
+                              <div className="mt-2">
+                                <SearchableSelect
+                                  value=""
+                                  onValueChange={v => { if (v) addSeatToTable(table.id, v); }}
+                                  placeholder="+ Deelnemer toevoegen"
+                                  emptyText="Iedereen is al geplaatst."
+                                  options={available}
+                                  triggerClassName="h-7 text-xs border-dashed"
+                                />
+                              </div>
+                            ) : null;
+                          })()}
                         </div>
                       ))}
                     </div>
