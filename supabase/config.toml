@@ -1,13 +1,13 @@
 project_id = "buoysrflkhemyterpamd"
 
-[functions.generate-seating]
-verify_jwt = false
-
-[functions.seating-ai-assistant]
-verify_jwt = false
-
-[functions.import-history]
-verify_jwt = false
-
-[functions.invite-user]
-verify_jwt = false
+[functions]
+  [functions.auth-email-hook]
+    verify_jwt = false
+  [functions.generate-seating]
+    verify_jwt = false
+  [functions.import-history]
+    verify_jwt = false
+  [functions.invite-user]
+    verify_jwt = false
+  [functions.seating-ai-assistant]
+    verify_jwt = false
