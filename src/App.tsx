@@ -7,6 +7,7 @@ import { AuthProvider, useAuth } from "@/contexts/AuthContext";
 import { AppLayout } from "@/components/AppLayout";
 import Dashboard from "./pages/Dashboard";
 import MembersPage from "./pages/Members";
+import MemberDetailPage from "./pages/MemberDetail";
 import EventsPage from "./pages/Events";
 import EventDetailPage from "./pages/EventDetail";
 import SeatingPage from "./pages/Seating";
@@ -48,6 +49,7 @@ const App = () => (
             <Route element={<ProtectedRoute><AppLayout /></ProtectedRoute>}>
               <Route path="/" element={<Dashboard />} />
               <Route path="/members" element={<MembersPage />} />
+              <Route path="/members/:id" element={<MemberDetailPage />} />
               <Route path="/events" element={<EventsPage />} />
               <Route path="/events/:id" element={<EventDetailPage />} />
               <Route path="/seating" element={<SeatingPage />} />
