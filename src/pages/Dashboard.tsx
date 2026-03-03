@@ -3,9 +3,11 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Users, Calendar, Armchair, TrendingUp } from "lucide-react";
+import { useNavigate } from "react-router-dom";
 
 export default function Dashboard() {
   const { profile, roles } = useAuth();
+  const navigate = useNavigate();
   const [stats, setStats] = useState({ members: 0, events: 0, upcomingEvents: 0, totalMeetings: 0 });
   const [recentEvents, setRecentEvents] = useState<any[]>([]);
 
@@ -73,7 +75,9 @@ export default function Dashboard() {
               {recentEvents.map(event => (
                 <div key={event.id} className="flex items-center justify-between p-3 rounded-lg bg-muted/50">
                   <div>
-                    <p className="font-medium">{event.title}</p>
+                    <button onClick={() => navigate(`/events/${event.id}`)} className="font-medium hover:text-primary hover:underline transition-colors cursor-pointer text-left">
+                      {event.title}
+                    </button>
                     <p className="text-sm text-muted-foreground">
                       {event.regions?.name} · {new Date(event.event_date).toLocaleDateString("nl-NL")}
                     </p>

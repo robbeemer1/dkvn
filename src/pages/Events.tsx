@@ -157,7 +157,11 @@ export default function EventsPage() {
             <TableBody>
               {events.map(ev => (
                 <TableRow key={ev.id}>
-                  <TableCell className="font-medium">{ev.title}</TableCell>
+                  <TableCell className="font-medium">
+                    <button onClick={() => navigate(`/events/${ev.id}`)} className="hover:text-primary hover:underline text-left transition-colors">
+                      {ev.title}
+                    </button>
+                  </TableCell>
                   <TableCell>{ev.regions?.name ? <RegionBadge name={ev.regions.name} /> : "—"}</TableCell>
                   <TableCell>{new Date(ev.event_date).toLocaleDateString("nl-NL")}</TableCell>
                   <TableCell className="text-muted-foreground">{ev.location_name || "—"}</TableCell>
