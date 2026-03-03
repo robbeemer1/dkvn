@@ -42,7 +42,17 @@ export default function MembersPage() {
   const [saving, setSaving] = useState(false);
 
   const fetchMembers = async () => {
+    // First get IDs of org members (super_admin, region_admin, event_organizer) to exclude
+    const { data: orgRoles } = await supabase
+      .from("user_roles")
+      .select("user_id")
+      .in("role", ["super_admin", "region_admin", "event_organizer"]);
+    const orgIds = [...new Set((orgRoles || []).map(r => r.user_id))];
+
     let query = supabase.from("profiles").select("*, regions(name)").order("last_name").order("first_name");
+    if (orgIds.length > 0) {
+      query = query.not("id", "in", `(${orgIds.join(",")})`);
+    }
     if (regionFilter === "none") {
       query = query.is("region_id", null);
     } else if (regionFilter !== "all") {
