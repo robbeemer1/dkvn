@@ -115,39 +115,18 @@ export default function PasteAttendees({ eventId, existingMemberIds, onDone }: P
   const saveAll = async () => {
     setSaving(true);
     try {
-      // 1. Add matched members as registrations
-      if (matched.length > 0) {
-        const inserts = matched.map(m => ({ event_id: eventId, member_id: m.profileId }));
-        const { error } = await supabase.from("event_registrations").insert(inserts);
-        if (error) throw error;
-      }
-
-      // 2. Create guest profiles + registrations for selected unmatched
       const selectedGuests = unmatched.filter(u => u.selected);
-      for (const guest of selectedGuests) {
-        // Create profile with membership_level 'gast'
-        const { data: newProfile, error: profileError } = await supabase
-          .from("profiles")
-          .insert({
-            id: crypto.randomUUID(),
-            first_name: guest.firstName,
-            last_name: guest.lastName,
-            membership_level: "gast",
-          })
-          .select("id")
-          .single();
 
-        if (profileError) {
-          console.error("Profile create error:", profileError);
-          continue;
-        }
-
-        // Add registration
-        await supabase.from("event_registrations").insert({
+      const res = await supabase.functions.invoke("bulk-add-attendees", {
+        body: {
           event_id: eventId,
-          member_id: newProfile.id,
-        });
-      }
+          matched_ids: matched.map(m => m.profileId),
+          guests: selectedGuests.map(g => ({ first_name: g.firstName, last_name: g.lastName })),
+        },
+      });
+
+      if (res.error) throw new Error(res.error.message || "Fout bij opslaan");
+      if (res.data?.error) throw new Error(res.data.error);
 
       const total = matched.length + selectedGuests.length;
       toast.success(`${total} deelnemer${total !== 1 ? "s" : ""} toegevoegd`);
