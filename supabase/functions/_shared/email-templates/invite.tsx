@@ -70,12 +70,15 @@ const text = {
 }
 const link = { color: 'hsl(25, 90%, 52%)', textDecoration: 'underline' }
 const button = {
-  backgroundColor: 'hsl(25, 90%, 52%)',
+  backgroundColor: '#e86c1a',
   color: '#ffffff',
-  fontSize: '14px',
+  fontSize: '16px',
   fontWeight: 'bold' as const,
-  borderRadius: '0.625rem',
-  padding: '12px 24px',
+  borderRadius: '8px',
+  padding: '14px 32px',
   textDecoration: 'none',
+  display: 'inline-block' as const,
+  textAlign: 'center' as const,
+  border: '2px solid #e86c1a',
 }
 const footer = { fontSize: '12px', color: '#999999', margin: '32px 0 0' }
