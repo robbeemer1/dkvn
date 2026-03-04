@@ -19,6 +19,7 @@ export default function ResetPasswordPage() {
   const navigate = useNavigate();
 
   useEffect(() => {
+    // Read hash before Supabase client may clear it
     const hash = window.location.hash;
     const params = new URLSearchParams(hash.replace("#", ""));
     const type = params.get("type");
@@ -26,30 +27,49 @@ export default function ResetPasswordPage() {
     if (type === "invite" || type === "recovery" || type === "magiclink") {
       setIsInvite(type === "invite");
       setValid(true);
-    } else {
-      // Also listen for auth state change — Supabase may process the token automatically
+      setChecking(false);
+      return;
+    }
+
+    // Hash may already have been consumed by Supabase client.
+    // Check if there's already an active session (invite auto-signs in).
+    const checkExistingSession = async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (session) {
+        // Session exists — tokens were already processed.
+        // Determine if this was an invite by checking if user has no password set yet
+        // (invited users are auto-signed-in but still need to set a password).
+        setIsInvite(true);
+        setValid(true);
+        setChecking(false);
+        return;
+      }
+
+      // No session yet — listen for auth state changes (token still processing)
       const { data: { subscription } } = supabase.auth.onAuthStateChange((event) => {
         if (event === "PASSWORD_RECOVERY") {
           setIsInvite(false);
           setValid(true);
+          setChecking(false);
         } else if (event === "SIGNED_IN" || event === "TOKEN_REFRESHED") {
-          // Invite flow auto-signs in
           setIsInvite(true);
           setValid(true);
+          setChecking(false);
         }
       });
 
-      // Give it a moment to process, then redirect if still invalid
+      // Give it time to process, then give up
       const timeout = setTimeout(() => {
         setChecking(false);
-      }, 2000);
+      }, 4000);
 
       return () => {
         subscription.unsubscribe();
         clearTimeout(timeout);
       };
-    }
-    setChecking(false);
+    };
+
+    checkExistingSession();
   }, []);
 
   useEffect(() => {
