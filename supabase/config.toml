@@ -13,3 +13,5 @@ project_id = "buoysrflkhemyterpamd"
     verify_jwt = false
   [functions.external-api]
     verify_jwt = false
+  [functions.restore-seating-version]
+    verify_jwt = false

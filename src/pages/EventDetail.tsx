@@ -25,6 +25,7 @@ import PasteAttendees from "@/components/PasteAttendees";
 import SearchableSelect from "@/components/SearchableSelect";
 import ConfirmDialog from "@/components/ConfirmDialog";
 import { printAttendeesPdf, printSeatingPdf } from "@/lib/printPdf";
+import SeatingVersions from "@/components/SeatingVersions";
 
 export default function EventDetailPage() {
   const { id } = useParams<{ id: string }>();
@@ -858,29 +859,14 @@ export default function EventDetailPage() {
             ))
           )}
 
-          {seatingVersions.length > 0 && (
-            <Card>
-              <CardHeader><CardTitle className="text-lg font-display">Versiegeschiedenis</CardTitle></CardHeader>
-              <CardContent>
-                <div className="space-y-2">
-                  {seatingVersions.map(v => (
-                    <div key={v.id} className="flex items-center justify-between p-3 rounded-lg bg-muted/50">
-                      <div>
-                        <p className="font-medium text-sm">Versie {v.version_number}</p>
-                        <p className="text-xs text-muted-foreground">{new Date(v.created_at).toLocaleString("nl-NL")}</p>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        {v.score && <span className="text-sm font-medium text-primary">Score: {v.score}</span>}
-                        <span className={cn("text-xs px-2 py-1 rounded-full", v.status === "gepubliceerd" ? "bg-green-100 text-green-700" : "bg-muted text-muted-foreground")}>
-                          {v.status}
-                        </span>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </CardContent>
-            </Card>
-          )}
+          <SeatingVersions
+            eventId={id!}
+            rounds={rounds}
+            registrations={registrations}
+            guests={guests}
+            seatingVersions={seatingVersions}
+            onRefresh={fetchAll}
+          />
         </TabsContent>
       </Tabs>
 
