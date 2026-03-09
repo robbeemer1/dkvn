@@ -80,13 +80,15 @@ export default function EventDetailPage() {
 
     const enrichedRounds = (rnds.data || []).map((round: any) => ({
       ...round,
-      event_tables: (round.event_tables || []).map((table: any) => ({
-        ...table,
-        table_seats: (table.table_seats || []).map((seat: any) => ({
-          ...seat,
-          profiles: seat.member_id ? profileMap[seat.member_id] || null : null,
+      event_tables: (round.event_tables || [])
+        .sort((a: any, b: any) => (a.table_number || 0) - (b.table_number || 0))
+        .map((table: any) => ({
+          ...table,
+          table_seats: (table.table_seats || []).map((seat: any) => ({
+            ...seat,
+            profiles: seat.member_id ? profileMap[seat.member_id] || null : null,
+          })),
         })),
-      })),
     }));
     setRounds(enrichedRounds);
     setSeatingVersions(vers.data || []);
