@@ -61,6 +61,8 @@ export default function SeatingVersions({
   const [executing, setExecuting] = useState(false);
   const [viewingVersion, setViewingVersion] = useState<any | null>(null);
   const [restoreConfirm, setRestoreConfirm] = useState<any | null>(null);
+  const [deleteConfirm, setDeleteConfirm] = useState<any | null>(null);
+  const [deleting, setDeleting] = useState(false);
   const [restoring, setRestoring] = useState(false);
 
   const getPersonName = (memberId: string | null, guestId: string | null): string => {
