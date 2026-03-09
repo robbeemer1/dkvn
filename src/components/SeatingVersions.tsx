@@ -314,16 +314,41 @@ export default function SeatingVersions({
           alreadyMoved.add(`${roundId}|${movePerson.id}`);
           alreadyMoved.add(`${roundId}|${bestSwapSeat.member_id}`);
 
+          // Calculate if the swap introduces any new issues
+          const targetTableName = bestTable.table_name || `Tafel ${bestTable.table_number}`;
+          let warningParts: string[] = [];
+          
+          // Check movePerson's new meetings at target table
+          const targetMembersForCheck = (bestTable.table_seats || [])
+            .filter((s: any) => s.member_id && s.member_id !== bestSwapSeat.member_id)
+            .map((s: any) => s.member_id);
+          for (const tm of targetMembersForCheck) {
+            const hc = historicalCounts[pairKey(movePerson.id, tm)] || 0;
+            if (hc > 0) warningParts.push(`${movePerson.name} ontmoette ${getPersonName(tm, null)} al ${hc}×`);
+          }
+          
+          // Check swapWith's new meetings at original table
+          const origMembersForCheck = (tableA.table_seats || [])
+            .filter((s: any) => s.member_id && s.member_id !== movePerson.id)
+            .map((s: any) => s.member_id);
+          for (const om of origMembersForCheck) {
+            const hc = historicalCounts[pairKey(bestSwapSeat.member_id, om)] || 0;
+            if (hc > 0) warningParts.push(`${getPersonName(bestSwapSeat.member_id, null)} ontmoette ${getPersonName(om, null)} al ${hc}×`);
+          }
+
+          const reasonBase = dup.historicalMeetings > 0 ? `${dup.historicalMeetings}× eerder ontmoet. ` : "";
+          const warningText = warningParts.length > 0 ? ` Let op: ${warningParts.join("; ")}.` : " Geen nieuwe dubbelen door deze wissel.";
+
           suggestions.push({
             roundId,
             roundLabel,
             movePerson,
             fromTable: { id: tableA.id, name: tableA.table_name || `Tafel ${tableA.table_number}` },
-            toTable: { id: bestTable.id, name: bestTable.table_name || `Tafel ${bestTable.table_number}` },
+            toTable: { id: bestTable.id, name: targetTableName },
             swapWith: { id: bestSwapSeat.member_id, name: getPersonName(bestSwapSeat.member_id, null) },
             fromSeatId: moveSeat.id,
             toSeatId: bestSwapSeat.id,
-            reason: `${dup.historicalMeetings > 0 ? `${dup.historicalMeetings}× eerder ontmoet. ` : ""}Minste overlap bij ${bestTable.table_name || `Tafel ${bestTable.table_number}`}.`,
+            reason: `${reasonBase}Minste overlap bij ${targetTableName}.${warningText}`,
           });
         }
       }
