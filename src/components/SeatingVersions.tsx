@@ -423,6 +423,36 @@ export default function SeatingVersions({
     setRestoreConfirm(null);
   };
 
+  const cycleAlternative = (index: number) => {
+    setSuggestions(prev => prev.map((s, i) => {
+      if (i !== index) return s;
+      const nextIdx = (s.currentAltIndex + 1) % s.alternatives.length;
+      const alt = s.alternatives[nextIdx];
+      return {
+        ...s,
+        currentAltIndex: nextIdx,
+        toTable: alt.toTable,
+        swapWith: alt.swapWith,
+        toSeatId: alt.toSeatId,
+        reason: alt.reason,
+      };
+    }));
+  };
+
+  const deleteVersion = async (version: any) => {
+    setDeleting(true);
+    try {
+      const { error } = await supabase.from("seating_versions").delete().eq("id", version.id);
+      if (error) throw error;
+      toast.success(`Versie ${version.version_number} verwijderd.`);
+      onRefresh();
+    } catch (err: any) {
+      toast.error(err.message || "Fout bij verwijderen");
+    }
+    setDeleting(false);
+    setDeleteConfirm(null);
+  };
+
   const renderSnapshotPreview = (snapshot: any) => {
     if (!snapshot?.rounds) return <p className="text-muted-foreground text-sm">Geen snapshot data beschikbaar.</p>;
     return (
