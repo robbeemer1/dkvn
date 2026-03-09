@@ -547,18 +547,31 @@ export default function SeatingVersions({
                   </h4>
                   <div className="space-y-2">
                     {suggestions.map((s, i) => (
-                      <div key={i} className="flex flex-wrap items-center gap-2 text-sm p-2 rounded-md bg-background border">
-                        <Badge variant="secondary" className="text-xs">{s.roundLabel}</Badge>
-                        <span className="font-medium">{s.movePerson.name}</span>
-                        <span className="text-muted-foreground">{s.fromTable.name} →</span>
-                        <span className="font-medium">{s.toTable.name}</span>
-                        {s.swapWith && (
-                          <>
-                            <span className="text-muted-foreground">↔</span>
-                            <span className="font-medium">{s.swapWith.name}</span>
-                          </>
-                        )}
-                        <span className="text-xs text-muted-foreground ml-auto">{s.reason}</span>
+                      <div key={i} className="flex flex-col gap-1 p-2 rounded-md bg-background border">
+                        <div className="flex flex-wrap items-center gap-2 text-sm">
+                          <Badge variant="secondary" className="text-xs">{s.roundLabel}</Badge>
+                          <span className="font-medium">{s.movePerson.name}</span>
+                          <span className="text-muted-foreground">{s.fromTable.name} →</span>
+                          <span className="font-medium">{s.toTable.name}</span>
+                          {s.swapWith && (
+                            <>
+                              <span className="text-muted-foreground">↔</span>
+                              <span className="font-medium">{s.swapWith.name}</span>
+                            </>
+                          )}
+                          {s.alternatives.length > 1 && (
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              className="h-6 px-2 text-xs ml-auto"
+                              onClick={() => cycleAlternative(i)}
+                            >
+                              <RefreshCw size={12} className="mr-1" />
+                              Alternatief ({s.currentAltIndex + 1}/{s.alternatives.length})
+                            </Button>
+                          )}
+                        </div>
+                        <span className="text-xs text-muted-foreground">{s.reason}</span>
                       </div>
                     ))}
                   </div>
