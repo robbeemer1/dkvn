@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
-import { AlertTriangle, ArrowRightLeft, CheckCircle, Eye, Play, RotateCcw, ShieldCheck } from "lucide-react";
+import { AlertTriangle, ArrowRightLeft, CheckCircle, Eye, Play, RefreshCw, RotateCcw, ShieldCheck, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import ConfirmDialog from "@/components/ConfirmDialog";
@@ -14,6 +14,14 @@ interface DuplicatePair {
   memberB: { id: string; name: string };
   rounds: string[];
   historicalMeetings: number;
+}
+
+interface SwapAlternative {
+  toTable: { id: string; name: string };
+  swapWith: { id: string; name: string } | null;
+  toSeatId: string | null;
+  cost: number;
+  reason: string;
 }
 
 interface SwapSuggestion {
@@ -26,6 +34,8 @@ interface SwapSuggestion {
   fromSeatId: string;
   toSeatId: string | null;
   reason: string;
+  alternatives: SwapAlternative[];
+  currentAltIndex: number; // 0 = best, 1 = second best, etc.
 }
 
 interface SeatingVersionsProps {
