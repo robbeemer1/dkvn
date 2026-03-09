@@ -269,105 +269,101 @@ export default function SeatingVersions({
           }
         }
 
-        // Find best target table: minimize historical meetings with table members
-        let bestTable: any = null;
-        let bestSwapSeat: any = null;
-        let bestCost = Infinity;
+          // Collect ALL swap options, not just the best
+          const allOptions: { table: any; swapSeat: any; cost: number }[] = [];
 
-        for (const targetTable of round.event_tables || []) {
-          if (targetTable.id === tableA.id) continue;
+          for (const targetTable of round.event_tables || []) {
+            if (targetTable.id === tableA.id) continue;
 
-          const targetMembers = (targetTable.table_seats || [])
-            .filter((s: any) => s.member_id)
-            .map((s: any) => s.member_id);
-
-          // Cost = historical meetings with target table members + current event same-table occurrences
-          let moveCost = 0;
-          for (const tm of targetMembers) {
-            moveCost += historicalCounts[pairKey(movePerson.id, tm)] || 0;
-            // Also check if they're already together in another round
-            const pk = pairKey(movePerson.id, tm);
-            if (pairRounds[pk] && pairRounds[pk].roundIds.some(rid => rid !== roundId)) {
-              moveCost += 5; // penalty for creating another cross-round duplicate
-            }
-          }
-
-          // Find best swap candidate at target table (not host)
-          const swapCandidates = (targetTable.table_seats || [])
-            .filter((s: any) => s.member_id && s.member_id !== targetTable.host_member_id && !alreadyMoved.has(`${roundId}|${s.member_id}`));
-
-          for (const swapSeat of swapCandidates) {
-            // Cost of swap candidate going to original table
-            const origMembers = (tableA.table_seats || [])
-              .filter((s: any) => s.member_id && s.member_id !== movePerson.id)
+            const targetMembers = (targetTable.table_seats || [])
+              .filter((s: any) => s.member_id)
               .map((s: any) => s.member_id);
-            let swapCost = 0;
-            for (const om of origMembers) {
-              swapCost += historicalCounts[pairKey(swapSeat.member_id, om)] || 0;
-              // Check if swap candidate would create cross-round duplicate at original table
-              const spk = pairKey(swapSeat.member_id, om);
-              if (pairRounds[spk] && pairRounds[spk].roundIds.some(rid => rid !== roundId)) {
-                swapCost += 5;
+
+            let moveCost = 0;
+            for (const tm of targetMembers) {
+              moveCost += historicalCounts[pairKey(movePerson.id, tm)] || 0;
+              const pk = pairKey(movePerson.id, tm);
+              if (pairRounds[pk] && pairRounds[pk].roundIds.some(rid => rid !== roundId)) {
+                moveCost += 5;
               }
             }
-            // Also check if movePerson at target table creates duplicates with target members in OTHER rounds
-            // (already included in moveCost above)
 
-            const totalCost = moveCost + swapCost;
-            if (totalCost < bestCost) {
-              bestCost = totalCost;
-              bestTable = targetTable;
-              bestSwapSeat = swapSeat;
+            const swapCandidates = (targetTable.table_seats || [])
+              .filter((s: any) => s.member_id && s.member_id !== targetTable.host_member_id && !alreadyMoved.has(`${roundId}|${s.member_id}`));
+
+            for (const swapSeat of swapCandidates) {
+              const origMembers = (tableA.table_seats || [])
+                .filter((s: any) => s.member_id && s.member_id !== movePerson.id)
+                .map((s: any) => s.member_id);
+              let swapCost = 0;
+              for (const om of origMembers) {
+                swapCost += historicalCounts[pairKey(swapSeat.member_id, om)] || 0;
+                const spk = pairKey(swapSeat.member_id, om);
+                if (pairRounds[spk] && pairRounds[spk].roundIds.some(rid => rid !== roundId)) {
+                  swapCost += 5;
+                }
+              }
+              allOptions.push({ table: targetTable, swapSeat, cost: moveCost + swapCost });
             }
           }
-        }
 
-        if (bestTable && bestSwapSeat) {
+          // Sort by cost ascending
+          allOptions.sort((a, b) => a.cost - b.cost);
+
+          if (allOptions.length === 0) continue;
+
+          const buildReason = (opt: { table: any; swapSeat: any; cost: number }) => {
+            const targetTableName = opt.table.table_name || `Tafel ${opt.table.table_number}`;
+            const warningParts: string[] = [];
+            const targetMembersForCheck = (opt.table.table_seats || [])
+              .filter((s: any) => s.member_id && s.member_id !== opt.swapSeat.member_id)
+              .map((s: any) => s.member_id);
+            for (const tm of targetMembersForCheck) {
+              const hc = historicalCounts[pairKey(movePerson.id, tm)] || 0;
+              if (hc > 0) warningParts.push(`${movePerson.name} ontmoette ${getPersonName(tm, null)} al ${hc}×`);
+            }
+            const origMembersForCheck = (tableA.table_seats || [])
+              .filter((s: any) => s.member_id && s.member_id !== movePerson.id)
+              .map((s: any) => s.member_id);
+            for (const om of origMembersForCheck) {
+              const hc = historicalCounts[pairKey(opt.swapSeat.member_id, om)] || 0;
+              if (hc > 0) warningParts.push(`${getPersonName(opt.swapSeat.member_id, null)} ontmoette ${getPersonName(om, null)} al ${hc}×`);
+            }
+            const reasonBase = dup.historicalMeetings > 0 ? `${dup.historicalMeetings}× eerder ontmoet. ` : "";
+            const warningText = warningParts.length > 0 ? ` Let op: ${warningParts.join("; ")}.` : " Geen nieuwe dubbelen door deze wissel.";
+            return `${reasonBase}Minste overlap bij ${targetTableName}.${warningText}`;
+          };
+
+          const best = allOptions[0];
           alreadyMoved.add(`${roundId}|${movePerson.id}`);
-          alreadyMoved.add(`${roundId}|${bestSwapSeat.member_id}`);
+          alreadyMoved.add(`${roundId}|${best.swapSeat.member_id}`);
 
-          // Calculate if the swap introduces any new issues
-          const targetTableName = bestTable.table_name || `Tafel ${bestTable.table_number}`;
-          let warningParts: string[] = [];
-          
-          // Check movePerson's new meetings at target table
-          const targetMembersForCheck = (bestTable.table_seats || [])
-            .filter((s: any) => s.member_id && s.member_id !== bestSwapSeat.member_id)
-            .map((s: any) => s.member_id);
-          for (const tm of targetMembersForCheck) {
-            const hc = historicalCounts[pairKey(movePerson.id, tm)] || 0;
-            if (hc > 0) warningParts.push(`${movePerson.name} ontmoette ${getPersonName(tm, null)} al ${hc}×`);
-          }
-          
-          // Check swapWith's new meetings at original table
-          const origMembersForCheck = (tableA.table_seats || [])
-            .filter((s: any) => s.member_id && s.member_id !== movePerson.id)
-            .map((s: any) => s.member_id);
-          for (const om of origMembersForCheck) {
-            const hc = historicalCounts[pairKey(bestSwapSeat.member_id, om)] || 0;
-            if (hc > 0) warningParts.push(`${getPersonName(bestSwapSeat.member_id, null)} ontmoette ${getPersonName(om, null)} al ${hc}×`);
-          }
-
-          const reasonBase = dup.historicalMeetings > 0 ? `${dup.historicalMeetings}× eerder ontmoet. ` : "";
-          const warningText = warningParts.length > 0 ? ` Let op: ${warningParts.join("; ")}.` : " Geen nieuwe dubbelen door deze wissel.";
+          const alternatives: SwapAlternative[] = allOptions.map(opt => ({
+            toTable: { id: opt.table.id, name: opt.table.table_name || `Tafel ${opt.table.table_number}` },
+            swapWith: { id: opt.swapSeat.member_id, name: getPersonName(opt.swapSeat.member_id, null) },
+            toSeatId: opt.swapSeat.id,
+            cost: opt.cost,
+            reason: buildReason(opt),
+          }));
 
           suggestions.push({
             roundId,
             roundLabel,
             movePerson,
             fromTable: { id: tableA.id, name: tableA.table_name || `Tafel ${tableA.table_number}` },
-            toTable: { id: bestTable.id, name: targetTableName },
-            swapWith: { id: bestSwapSeat.member_id, name: getPersonName(bestSwapSeat.member_id, null) },
+            toTable: alternatives[0].toTable,
+            swapWith: alternatives[0].swapWith,
             fromSeatId: moveSeat.id,
-            toSeatId: bestSwapSeat.id,
-            reason: `${reasonBase}Minste overlap bij ${targetTableName}.${warningText}`,
+            toSeatId: alternatives[0].toSeatId,
+            reason: alternatives[0].reason,
+            alternatives,
+            currentAltIndex: 0,
           });
         }
       }
-    }
 
-    return suggestions;
-  };
+      return suggestions;
+    };
 
   const executeSuggestions = async () => {
     setExecuting(true);
