@@ -623,6 +623,9 @@ export default function SeatingVersions({
                       <Button size="sm" variant="ghost" className="h-7 px-2 text-xs" onClick={() => setRestoreConfirm(v)}>
                         <RotateCcw size={13} className="mr-1" />Herstel
                       </Button>
+                      <Button size="sm" variant="ghost" className="h-7 px-2 text-xs text-destructive hover:text-destructive" onClick={() => setDeleteConfirm(v)}>
+                        <Trash2 size={13} className="mr-1" />Verwijder
+                      </Button>
                     </div>
                   </div>
                 );
