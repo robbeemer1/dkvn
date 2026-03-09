@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
-import { AlertTriangle, ArrowRightLeft, CheckCircle, Eye, Play, RotateCcw, ShieldCheck } from "lucide-react";
+import { AlertTriangle, ArrowRightLeft, CheckCircle, Eye, Play, RefreshCw, RotateCcw, ShieldCheck, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import ConfirmDialog from "@/components/ConfirmDialog";
@@ -14,6 +14,14 @@ interface DuplicatePair {
   memberB: { id: string; name: string };
   rounds: string[];
   historicalMeetings: number;
+}
+
+interface SwapAlternative {
+  toTable: { id: string; name: string };
+  swapWith: { id: string; name: string } | null;
+  toSeatId: string | null;
+  cost: number;
+  reason: string;
 }
 
 interface SwapSuggestion {
@@ -26,6 +34,8 @@ interface SwapSuggestion {
   fromSeatId: string;
   toSeatId: string | null;
   reason: string;
+  alternatives: SwapAlternative[];
+  currentAltIndex: number; // 0 = best, 1 = second best, etc.
 }
 
 interface SeatingVersionsProps {
@@ -51,6 +61,8 @@ export default function SeatingVersions({
   const [executing, setExecuting] = useState(false);
   const [viewingVersion, setViewingVersion] = useState<any | null>(null);
   const [restoreConfirm, setRestoreConfirm] = useState<any | null>(null);
+  const [deleteConfirm, setDeleteConfirm] = useState<any | null>(null);
+  const [deleting, setDeleting] = useState(false);
   const [restoring, setRestoring] = useState(false);
 
   const getPersonName = (memberId: string | null, guestId: string | null): string => {
@@ -257,105 +269,101 @@ export default function SeatingVersions({
           }
         }
 
-        // Find best target table: minimize historical meetings with table members
-        let bestTable: any = null;
-        let bestSwapSeat: any = null;
-        let bestCost = Infinity;
+          // Collect ALL swap options, not just the best
+          const allOptions: { table: any; swapSeat: any; cost: number }[] = [];
 
-        for (const targetTable of round.event_tables || []) {
-          if (targetTable.id === tableA.id) continue;
+          for (const targetTable of round.event_tables || []) {
+            if (targetTable.id === tableA.id) continue;
 
-          const targetMembers = (targetTable.table_seats || [])
-            .filter((s: any) => s.member_id)
-            .map((s: any) => s.member_id);
-
-          // Cost = historical meetings with target table members + current event same-table occurrences
-          let moveCost = 0;
-          for (const tm of targetMembers) {
-            moveCost += historicalCounts[pairKey(movePerson.id, tm)] || 0;
-            // Also check if they're already together in another round
-            const pk = pairKey(movePerson.id, tm);
-            if (pairRounds[pk] && pairRounds[pk].roundIds.some(rid => rid !== roundId)) {
-              moveCost += 5; // penalty for creating another cross-round duplicate
-            }
-          }
-
-          // Find best swap candidate at target table (not host)
-          const swapCandidates = (targetTable.table_seats || [])
-            .filter((s: any) => s.member_id && s.member_id !== targetTable.host_member_id && !alreadyMoved.has(`${roundId}|${s.member_id}`));
-
-          for (const swapSeat of swapCandidates) {
-            // Cost of swap candidate going to original table
-            const origMembers = (tableA.table_seats || [])
-              .filter((s: any) => s.member_id && s.member_id !== movePerson.id)
+            const targetMembers = (targetTable.table_seats || [])
+              .filter((s: any) => s.member_id)
               .map((s: any) => s.member_id);
-            let swapCost = 0;
-            for (const om of origMembers) {
-              swapCost += historicalCounts[pairKey(swapSeat.member_id, om)] || 0;
-              // Check if swap candidate would create cross-round duplicate at original table
-              const spk = pairKey(swapSeat.member_id, om);
-              if (pairRounds[spk] && pairRounds[spk].roundIds.some(rid => rid !== roundId)) {
-                swapCost += 5;
+
+            let moveCost = 0;
+            for (const tm of targetMembers) {
+              moveCost += historicalCounts[pairKey(movePerson.id, tm)] || 0;
+              const pk = pairKey(movePerson.id, tm);
+              if (pairRounds[pk] && pairRounds[pk].roundIds.some(rid => rid !== roundId)) {
+                moveCost += 5;
               }
             }
-            // Also check if movePerson at target table creates duplicates with target members in OTHER rounds
-            // (already included in moveCost above)
 
-            const totalCost = moveCost + swapCost;
-            if (totalCost < bestCost) {
-              bestCost = totalCost;
-              bestTable = targetTable;
-              bestSwapSeat = swapSeat;
+            const swapCandidates = (targetTable.table_seats || [])
+              .filter((s: any) => s.member_id && s.member_id !== targetTable.host_member_id && !alreadyMoved.has(`${roundId}|${s.member_id}`));
+
+            for (const swapSeat of swapCandidates) {
+              const origMembers = (tableA.table_seats || [])
+                .filter((s: any) => s.member_id && s.member_id !== movePerson.id)
+                .map((s: any) => s.member_id);
+              let swapCost = 0;
+              for (const om of origMembers) {
+                swapCost += historicalCounts[pairKey(swapSeat.member_id, om)] || 0;
+                const spk = pairKey(swapSeat.member_id, om);
+                if (pairRounds[spk] && pairRounds[spk].roundIds.some(rid => rid !== roundId)) {
+                  swapCost += 5;
+                }
+              }
+              allOptions.push({ table: targetTable, swapSeat, cost: moveCost + swapCost });
             }
           }
-        }
 
-        if (bestTable && bestSwapSeat) {
+          // Sort by cost ascending
+          allOptions.sort((a, b) => a.cost - b.cost);
+
+          if (allOptions.length === 0) continue;
+
+          const buildReason = (opt: { table: any; swapSeat: any; cost: number }) => {
+            const targetTableName = opt.table.table_name || `Tafel ${opt.table.table_number}`;
+            const warningParts: string[] = [];
+            const targetMembersForCheck = (opt.table.table_seats || [])
+              .filter((s: any) => s.member_id && s.member_id !== opt.swapSeat.member_id)
+              .map((s: any) => s.member_id);
+            for (const tm of targetMembersForCheck) {
+              const hc = historicalCounts[pairKey(movePerson.id, tm)] || 0;
+              if (hc > 0) warningParts.push(`${movePerson.name} ontmoette ${getPersonName(tm, null)} al ${hc}×`);
+            }
+            const origMembersForCheck = (tableA.table_seats || [])
+              .filter((s: any) => s.member_id && s.member_id !== movePerson.id)
+              .map((s: any) => s.member_id);
+            for (const om of origMembersForCheck) {
+              const hc = historicalCounts[pairKey(opt.swapSeat.member_id, om)] || 0;
+              if (hc > 0) warningParts.push(`${getPersonName(opt.swapSeat.member_id, null)} ontmoette ${getPersonName(om, null)} al ${hc}×`);
+            }
+            const reasonBase = dup.historicalMeetings > 0 ? `${dup.historicalMeetings}× eerder ontmoet. ` : "";
+            const warningText = warningParts.length > 0 ? ` Let op: ${warningParts.join("; ")}.` : " Geen nieuwe dubbelen door deze wissel.";
+            return `${reasonBase}Minste overlap bij ${targetTableName}.${warningText}`;
+          };
+
+          const best = allOptions[0];
           alreadyMoved.add(`${roundId}|${movePerson.id}`);
-          alreadyMoved.add(`${roundId}|${bestSwapSeat.member_id}`);
+          alreadyMoved.add(`${roundId}|${best.swapSeat.member_id}`);
 
-          // Calculate if the swap introduces any new issues
-          const targetTableName = bestTable.table_name || `Tafel ${bestTable.table_number}`;
-          let warningParts: string[] = [];
-          
-          // Check movePerson's new meetings at target table
-          const targetMembersForCheck = (bestTable.table_seats || [])
-            .filter((s: any) => s.member_id && s.member_id !== bestSwapSeat.member_id)
-            .map((s: any) => s.member_id);
-          for (const tm of targetMembersForCheck) {
-            const hc = historicalCounts[pairKey(movePerson.id, tm)] || 0;
-            if (hc > 0) warningParts.push(`${movePerson.name} ontmoette ${getPersonName(tm, null)} al ${hc}×`);
-          }
-          
-          // Check swapWith's new meetings at original table
-          const origMembersForCheck = (tableA.table_seats || [])
-            .filter((s: any) => s.member_id && s.member_id !== movePerson.id)
-            .map((s: any) => s.member_id);
-          for (const om of origMembersForCheck) {
-            const hc = historicalCounts[pairKey(bestSwapSeat.member_id, om)] || 0;
-            if (hc > 0) warningParts.push(`${getPersonName(bestSwapSeat.member_id, null)} ontmoette ${getPersonName(om, null)} al ${hc}×`);
-          }
-
-          const reasonBase = dup.historicalMeetings > 0 ? `${dup.historicalMeetings}× eerder ontmoet. ` : "";
-          const warningText = warningParts.length > 0 ? ` Let op: ${warningParts.join("; ")}.` : " Geen nieuwe dubbelen door deze wissel.";
+          const alternatives: SwapAlternative[] = allOptions.map(opt => ({
+            toTable: { id: opt.table.id, name: opt.table.table_name || `Tafel ${opt.table.table_number}` },
+            swapWith: { id: opt.swapSeat.member_id, name: getPersonName(opt.swapSeat.member_id, null) },
+            toSeatId: opt.swapSeat.id,
+            cost: opt.cost,
+            reason: buildReason(opt),
+          }));
 
           suggestions.push({
             roundId,
             roundLabel,
             movePerson,
             fromTable: { id: tableA.id, name: tableA.table_name || `Tafel ${tableA.table_number}` },
-            toTable: { id: bestTable.id, name: targetTableName },
-            swapWith: { id: bestSwapSeat.member_id, name: getPersonName(bestSwapSeat.member_id, null) },
+            toTable: alternatives[0].toTable,
+            swapWith: alternatives[0].swapWith,
             fromSeatId: moveSeat.id,
-            toSeatId: bestSwapSeat.id,
-            reason: `${reasonBase}Minste overlap bij ${targetTableName}.${warningText}`,
+            toSeatId: alternatives[0].toSeatId,
+            reason: alternatives[0].reason,
+            alternatives,
+            currentAltIndex: 0,
           });
         }
       }
-    }
 
-    return suggestions;
-  };
+      return suggestions;
+    };
 
   const executeSuggestions = async () => {
     setExecuting(true);
@@ -413,6 +421,36 @@ export default function SeatingVersions({
     }
     setRestoring(false);
     setRestoreConfirm(null);
+  };
+
+  const cycleAlternative = (index: number) => {
+    setSuggestions(prev => prev.map((s, i) => {
+      if (i !== index) return s;
+      const nextIdx = (s.currentAltIndex + 1) % s.alternatives.length;
+      const alt = s.alternatives[nextIdx];
+      return {
+        ...s,
+        currentAltIndex: nextIdx,
+        toTable: alt.toTable,
+        swapWith: alt.swapWith,
+        toSeatId: alt.toSeatId,
+        reason: alt.reason,
+      };
+    }));
+  };
+
+  const deleteVersion = async (version: any) => {
+    setDeleting(true);
+    try {
+      const { error } = await supabase.from("seating_versions").delete().eq("id", version.id);
+      if (error) throw error;
+      toast.success(`Versie ${version.version_number} verwijderd.`);
+      onRefresh();
+    } catch (err: any) {
+      toast.error(err.message || "Fout bij verwijderen");
+    }
+    setDeleting(false);
+    setDeleteConfirm(null);
   };
 
   const renderSnapshotPreview = (snapshot: any) => {
@@ -509,18 +547,31 @@ export default function SeatingVersions({
                   </h4>
                   <div className="space-y-2">
                     {suggestions.map((s, i) => (
-                      <div key={i} className="flex flex-wrap items-center gap-2 text-sm p-2 rounded-md bg-background border">
-                        <Badge variant="secondary" className="text-xs">{s.roundLabel}</Badge>
-                        <span className="font-medium">{s.movePerson.name}</span>
-                        <span className="text-muted-foreground">{s.fromTable.name} →</span>
-                        <span className="font-medium">{s.toTable.name}</span>
-                        {s.swapWith && (
-                          <>
-                            <span className="text-muted-foreground">↔</span>
-                            <span className="font-medium">{s.swapWith.name}</span>
-                          </>
-                        )}
-                        <span className="text-xs text-muted-foreground ml-auto">{s.reason}</span>
+                      <div key={i} className="flex flex-col gap-1 p-2 rounded-md bg-background border">
+                        <div className="flex flex-wrap items-center gap-2 text-sm">
+                          <Badge variant="secondary" className="text-xs">{s.roundLabel}</Badge>
+                          <span className="font-medium">{s.movePerson.name}</span>
+                          <span className="text-muted-foreground">{s.fromTable.name} →</span>
+                          <span className="font-medium">{s.toTable.name}</span>
+                          {s.swapWith && (
+                            <>
+                              <span className="text-muted-foreground">↔</span>
+                              <span className="font-medium">{s.swapWith.name}</span>
+                            </>
+                          )}
+                          {s.alternatives.length > 1 && (
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              className="h-6 px-2 text-xs ml-auto"
+                              onClick={() => cycleAlternative(i)}
+                            >
+                              <RefreshCw size={12} className="mr-1" />
+                              Alternatief ({s.currentAltIndex + 1}/{s.alternatives.length})
+                            </Button>
+                          )}
+                        </div>
+                        <span className="text-xs text-muted-foreground">{s.reason}</span>
                       </div>
                     ))}
                   </div>
@@ -572,6 +623,9 @@ export default function SeatingVersions({
                       <Button size="sm" variant="ghost" className="h-7 px-2 text-xs" onClick={() => setRestoreConfirm(v)}>
                         <RotateCcw size={13} className="mr-1" />Herstel
                       </Button>
+                      <Button size="sm" variant="ghost" className="h-7 px-2 text-xs text-destructive hover:text-destructive" onClick={() => setDeleteConfirm(v)}>
+                        <Trash2 size={13} className="mr-1" />Verwijder
+                      </Button>
                     </div>
                   </div>
                 );
@@ -606,6 +660,18 @@ export default function SeatingVersions({
         confirmLabel={restoring ? "Herstellen..." : "Herstellen"}
         cancelLabel="Annuleren"
         variant="default"
+      />
+
+      {/* Delete confirmation */}
+      <ConfirmDialog
+        open={deleteConfirm !== null}
+        onOpenChange={open => { if (!open) setDeleteConfirm(null); }}
+        title="Versie verwijderen"
+        description={`Weet je zeker dat je versie ${deleteConfirm?.version_number} wilt verwijderen? Dit kan niet ongedaan worden gemaakt.`}
+        onConfirm={() => deleteConfirm && deleteVersion(deleteConfirm)}
+        confirmLabel={deleting ? "Verwijderen..." : "Verwijderen"}
+        cancelLabel="Annuleren"
+        variant="destructive"
       />
     </>
   );
