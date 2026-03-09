@@ -25,6 +25,7 @@ import PasteAttendees from "@/components/PasteAttendees";
 import SearchableSelect from "@/components/SearchableSelect";
 import ConfirmDialog from "@/components/ConfirmDialog";
 import { printAttendeesPdf, printSeatingPdf } from "@/lib/printPdf";
+import SeatingVersions from "@/components/SeatingVersions";
 
 export default function EventDetailPage() {
   const { id } = useParams<{ id: string }>();
