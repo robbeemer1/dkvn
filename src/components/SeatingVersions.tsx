@@ -292,7 +292,15 @@ export default function SeatingVersions({
             let swapCost = 0;
             for (const om of origMembers) {
               swapCost += historicalCounts[pairKey(swapSeat.member_id, om)] || 0;
+              // Check if swap candidate would create cross-round duplicate at original table
+              const spk = pairKey(swapSeat.member_id, om);
+              if (pairRounds[spk] && pairRounds[spk].roundIds.some(rid => rid !== roundId)) {
+                swapCost += 5;
+              }
             }
+            // Also check if movePerson at target table creates duplicates with target members in OTHER rounds
+            // (already included in moveCost above)
+
             const totalCost = moveCost + swapCost;
             if (totalCost < bestCost) {
               bestCost = totalCost;
