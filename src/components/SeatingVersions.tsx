@@ -661,6 +661,18 @@ export default function SeatingVersions({
         cancelLabel="Annuleren"
         variant="default"
       />
+
+      {/* Delete confirmation */}
+      <ConfirmDialog
+        open={deleteConfirm !== null}
+        onOpenChange={open => { if (!open) setDeleteConfirm(null); }}
+        title="Versie verwijderen"
+        description={`Weet je zeker dat je versie ${deleteConfirm?.version_number} wilt verwijderen? Dit kan niet ongedaan worden gemaakt.`}
+        onConfirm={() => deleteConfirm && deleteVersion(deleteConfirm)}
+        confirmLabel={deleting ? "Verwijderen..." : "Verwijderen"}
+        cancelLabel="Annuleren"
+        variant="destructive"
+      />
     </>
   );
 }
