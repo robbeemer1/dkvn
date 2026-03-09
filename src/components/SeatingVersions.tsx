@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
-import { AlertTriangle, CheckCircle, Eye, RotateCcw, Save, ShieldCheck } from "lucide-react";
+import { AlertTriangle, ArrowRightLeft, CheckCircle, Eye, Play, RotateCcw, ShieldCheck } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import ConfirmDialog from "@/components/ConfirmDialog";
@@ -13,6 +13,19 @@ interface DuplicatePair {
   memberA: { id: string; name: string };
   memberB: { id: string; name: string };
   rounds: string[];
+  historicalMeetings: number;
+}
+
+interface SwapSuggestion {
+  roundId: string;
+  roundLabel: string;
+  movePerson: { id: string; name: string };
+  fromTable: { id: string; name: string };
+  toTable: { id: string; name: string };
+  swapWith: { id: string; name: string } | null;
+  fromSeatId: string;
+  toSeatId: string | null;
+  reason: string;
 }
 
 interface SeatingVersionsProps {
@@ -34,11 +47,12 @@ export default function SeatingVersions({
 }: SeatingVersionsProps) {
   const [checking, setChecking] = useState(false);
   const [duplicates, setDuplicates] = useState<DuplicatePair[] | null>(null);
+  const [suggestions, setSuggestions] = useState<SwapSuggestion[]>([]);
+  const [executing, setExecuting] = useState(false);
   const [viewingVersion, setViewingVersion] = useState<any | null>(null);
   const [restoreConfirm, setRestoreConfirm] = useState<any | null>(null);
   const [restoring, setRestoring] = useState(false);
 
-  // Build a name lookup from registrations and guests
   const getPersonName = (memberId: string | null, guestId: string | null): string => {
     if (memberId) {
       const reg = registrations.find(r => r.member_id === memberId);
@@ -53,76 +67,72 @@ export default function SeatingVersions({
     return "Onbekend";
   };
 
-  const checkDuplicates = (): DuplicatePair[] => {
-    // For each round, build a map of which members sit together
-    // Then find pairs that appear in multiple rounds
-    const pairRounds: Record<string, Set<string>> = {};
-
-    for (const round of rounds) {
-      const roundLabel = round.name || `Ronde ${round.round_number}`;
-      for (const table of round.event_tables || []) {
-        const memberIds = (table.table_seats || [])
-          .filter((s: any) => s.member_id)
-          .map((s: any) => s.member_id)
-          .sort();
-
-        for (let i = 0; i < memberIds.length; i++) {
-          for (let j = i + 1; j < memberIds.length; j++) {
-            const key = `${memberIds[i]}|${memberIds[j]}`;
-            if (!pairRounds[key]) pairRounds[key] = new Set();
-            pairRounds[key].add(roundLabel);
-          }
-        }
-      }
-    }
-
-    // Filter pairs that appear in more than one round
-    const duplicatePairs: DuplicatePair[] = [];
-    for (const [key, roundSet] of Object.entries(pairRounds)) {
-      if (roundSet.size > 1) {
-        const [aId, bId] = key.split("|");
-        duplicatePairs.push({
-          memberA: { id: aId, name: getPersonName(aId, null) },
-          memberB: { id: bId, name: getPersonName(bId, null) },
-          rounds: Array.from(roundSet),
-        });
-      }
-    }
-
-    return duplicatePairs;
-  };
-
-  const buildSnapshot = () => {
-    return {
-      rounds: rounds.map(round => ({
-        round_number: round.round_number,
-        name: round.name,
-        tables: (round.event_tables || []).map((table: any) => ({
-          table_number: table.table_number,
-          table_name: table.table_name,
-          capacity: table.capacity,
-          host_member_id: table.host_member_id,
-          seats: (table.table_seats || []).map((seat: any) => ({
-            member_id: seat.member_id,
-            guest_id: seat.guest_id,
-            seat_number: seat.seat_number,
-          })),
-        })),
-      })),
-    };
-  };
+  const pairKey = (a: string, b: string) => a < b ? `${a}|${b}` : `${b}|${a}`;
 
   const handleCheckAndSave = async () => {
     setChecking(true);
+    setSuggestions([]);
     try {
-      // 1. Check duplicates
-      const dups = checkDuplicates();
-      setDuplicates(dups);
+      // 1. Fetch meeting history
+      const allMemberIds = registrations.map(r => r.member_id);
+      const { data: history } = await supabase
+        .from("meeting_history")
+        .select("member_a_id, member_b_id, event_id")
+        .or(allMemberIds.map(id => `member_a_id.eq.${id},member_b_id.eq.${id}`).join(","));
 
-      // 2. Save current state as version
+      // Build historical meeting count map (exclude current event)
+      const historicalCounts: Record<string, number> = {};
+      for (const h of history || []) {
+        if (h.event_id === eventId) continue;
+        const key = pairKey(h.member_a_id, h.member_b_id);
+        historicalCounts[key] = (historicalCounts[key] || 0) + 1;
+      }
+
+      // 2. Find duplicates across rounds in current event
+      const pairRounds: Record<string, { roundIds: string[]; roundLabels: string[] }> = {};
+      for (const round of rounds) {
+        const roundLabel = round.name || `Ronde ${round.round_number}`;
+        for (const table of round.event_tables || []) {
+          const memberIds = (table.table_seats || [])
+            .filter((s: any) => s.member_id)
+            .map((s: any) => s.member_id)
+            .sort();
+          for (let i = 0; i < memberIds.length; i++) {
+            for (let j = i + 1; j < memberIds.length; j++) {
+              const key = pairKey(memberIds[i], memberIds[j]);
+              if (!pairRounds[key]) pairRounds[key] = { roundIds: [], roundLabels: [] };
+              if (!pairRounds[key].roundIds.includes(round.id)) {
+                pairRounds[key].roundIds.push(round.id);
+                pairRounds[key].roundLabels.push(roundLabel);
+              }
+            }
+          }
+        }
+      }
+
+      const duplicatePairs: DuplicatePair[] = [];
+      for (const [key, info] of Object.entries(pairRounds)) {
+        if (info.roundIds.length > 1) {
+          const [aId, bId] = key.split("|");
+          duplicatePairs.push({
+            memberA: { id: aId, name: getPersonName(aId, null) },
+            memberB: { id: bId, name: getPersonName(bId, null) },
+            rounds: info.roundLabels,
+            historicalMeetings: historicalCounts[key] || 0,
+          });
+        }
+      }
+
+      setDuplicates(duplicatePairs);
+
+      // 3. Generate swap suggestions for each duplicate
+      if (duplicatePairs.length > 0) {
+        const swapSuggestions = computeSwapSuggestions(duplicatePairs, pairRounds, historicalCounts);
+        setSuggestions(swapSuggestions);
+      }
+
+      // 4. Save version
       const snapshot = buildSnapshot();
-
-      // Only save if there are actual tables
       const hasTables = rounds.some(r => (r.event_tables || []).length > 0);
       if (!hasTables) {
         toast.info("Geen tafels om op te slaan als versie.");
@@ -130,7 +140,6 @@ export default function SeatingVersions({
         return;
       }
 
-      // Calculate score
       let totalNew = 0;
       let totalRepeats = 0;
       const pairCounts: Record<string, number> = {};
@@ -142,7 +151,7 @@ export default function SeatingVersions({
             .sort();
           for (let i = 0; i < memberIds.length; i++) {
             for (let j = i + 1; j < memberIds.length; j++) {
-              const key = `${memberIds[i]}|${memberIds[j]}`;
+              const key = pairKey(memberIds[i], memberIds[j]);
               pairCounts[key] = (pairCounts[key] || 0) + 1;
             }
           }
@@ -155,7 +164,6 @@ export default function SeatingVersions({
       const totalPairs = totalNew + totalRepeats;
       const score = totalPairs > 0 ? Math.round((totalNew / totalPairs) * 100) : 100;
 
-      // Get next version number
       const nextVersion = seatingVersions.length > 0
         ? Math.max(...seatingVersions.map(v => v.version_number)) + 1
         : 1;
@@ -165,16 +173,16 @@ export default function SeatingVersions({
         version_number: nextVersion,
         status: "concept",
         score,
-        score_details: { new_meetings: totalNew, repeats: totalRepeats, total_pairs: totalPairs, duplicates_across_rounds: dups.length },
+        score_details: { new_meetings: totalNew, repeats: totalRepeats, total_pairs: totalPairs, duplicates_across_rounds: duplicatePairs.length },
         snapshot,
       });
 
       if (error) throw error;
 
-      if (dups.length === 0) {
+      if (duplicatePairs.length === 0) {
         toast.success(`Versie ${nextVersion} opgeslagen — geen dubbele ontmoetingen gevonden! 🎉`);
       } else {
-        toast.warning(`Versie ${nextVersion} opgeslagen — ${dups.length} dubbele ontmoeting(en) gevonden.`);
+        toast.warning(`Versie ${nextVersion} opgeslagen — ${duplicatePairs.length} dubbele ontmoeting(en) gevonden.`);
       }
 
       onRefresh();
@@ -183,6 +191,179 @@ export default function SeatingVersions({
     }
     setChecking(false);
   };
+
+  const computeSwapSuggestions = (
+    duplicatePairs: DuplicatePair[],
+    pairRounds: Record<string, { roundIds: string[]; roundLabels: string[] }>,
+    historicalCounts: Record<string, number>,
+  ): SwapSuggestion[] => {
+    const suggestions: SwapSuggestion[] = [];
+    const alreadyMoved = new Set<string>(); // track "roundId|memberId" to avoid double-moving
+
+    for (const dup of duplicatePairs) {
+      const key = pairKey(dup.memberA.id, dup.memberB.id);
+      const info = pairRounds[key];
+      if (!info || info.roundIds.length < 2) continue;
+
+      // Keep them together in the first round, fix in subsequent rounds
+      for (let ri = 1; ri < info.roundIds.length; ri++) {
+        const roundId = info.roundIds[ri];
+        const roundLabel = info.roundLabels[ri];
+        const round = rounds.find(r => r.id === roundId);
+        if (!round) continue;
+
+        // Find which table each person is at in this round
+        let tableA: any = null, tableB: any = null;
+        let seatA: any = null, seatB: any = null;
+        for (const table of round.event_tables || []) {
+          for (const seat of table.table_seats || []) {
+            if (seat.member_id === dup.memberA.id) { tableA = table; seatA = seat; }
+            if (seat.member_id === dup.memberB.id) { tableB = table; seatB = seat; }
+          }
+        }
+        if (!tableA || !tableB || tableA.id === tableB.id === false) continue;
+        if (tableA.id !== tableB.id) continue; // they should be at the same table
+
+        // Decide who to move: prefer moving the one who is NOT a host
+        const isAHost = tableA.host_member_id === dup.memberA.id;
+        const isBHost = tableA.host_member_id === dup.memberB.id;
+        const moveKey1 = `${roundId}|${dup.memberA.id}`;
+        const moveKey2 = `${roundId}|${dup.memberB.id}`;
+
+        let movePerson: { id: string; name: string };
+        let stayPerson: { id: string; name: string };
+        let moveSeat: any;
+
+        if (isAHost || alreadyMoved.has(moveKey1)) {
+          movePerson = dup.memberB;
+          stayPerson = dup.memberA;
+          moveSeat = seatB;
+        } else if (isBHost || alreadyMoved.has(moveKey2)) {
+          movePerson = dup.memberA;
+          stayPerson = dup.memberB;
+          moveSeat = seatA;
+        } else {
+          // Move the one with more historical meetings at this table
+          const aMeetings = (tableA.table_seats || [])
+            .filter((s: any) => s.member_id && s.member_id !== dup.memberA.id)
+            .reduce((sum: number, s: any) => sum + (historicalCounts[pairKey(dup.memberA.id, s.member_id)] || 0), 0);
+          const bMeetings = (tableA.table_seats || [])
+            .filter((s: any) => s.member_id && s.member_id !== dup.memberB.id)
+            .reduce((sum: number, s: any) => sum + (historicalCounts[pairKey(dup.memberB.id, s.member_id)] || 0), 0);
+          if (aMeetings >= bMeetings) {
+            movePerson = dup.memberA; stayPerson = dup.memberB; moveSeat = seatA;
+          } else {
+            movePerson = dup.memberB; stayPerson = dup.memberA; moveSeat = seatB;
+          }
+        }
+
+        // Find best target table: minimize historical meetings with table members
+        let bestTable: any = null;
+        let bestSwapSeat: any = null;
+        let bestCost = Infinity;
+
+        for (const targetTable of round.event_tables || []) {
+          if (targetTable.id === tableA.id) continue;
+
+          const targetMembers = (targetTable.table_seats || [])
+            .filter((s: any) => s.member_id)
+            .map((s: any) => s.member_id);
+
+          // Cost = historical meetings with target table members + current event same-table occurrences
+          let moveCost = 0;
+          for (const tm of targetMembers) {
+            moveCost += historicalCounts[pairKey(movePerson.id, tm)] || 0;
+            // Also check if they're already together in another round
+            const pk = pairKey(movePerson.id, tm);
+            if (pairRounds[pk] && pairRounds[pk].roundIds.some(rid => rid !== roundId)) {
+              moveCost += 5; // penalty for creating another cross-round duplicate
+            }
+          }
+
+          // Find best swap candidate at target table (not host)
+          const swapCandidates = (targetTable.table_seats || [])
+            .filter((s: any) => s.member_id && s.member_id !== targetTable.host_member_id && !alreadyMoved.has(`${roundId}|${s.member_id}`));
+
+          for (const swapSeat of swapCandidates) {
+            // Cost of swap candidate going to original table
+            const origMembers = (tableA.table_seats || [])
+              .filter((s: any) => s.member_id && s.member_id !== movePerson.id)
+              .map((s: any) => s.member_id);
+            let swapCost = 0;
+            for (const om of origMembers) {
+              swapCost += historicalCounts[pairKey(swapSeat.member_id, om)] || 0;
+            }
+            const totalCost = moveCost + swapCost;
+            if (totalCost < bestCost) {
+              bestCost = totalCost;
+              bestTable = targetTable;
+              bestSwapSeat = swapSeat;
+            }
+          }
+        }
+
+        if (bestTable && bestSwapSeat) {
+          alreadyMoved.add(`${roundId}|${movePerson.id}`);
+          alreadyMoved.add(`${roundId}|${bestSwapSeat.member_id}`);
+
+          suggestions.push({
+            roundId,
+            roundLabel,
+            movePerson,
+            fromTable: { id: tableA.id, name: tableA.table_name || `Tafel ${tableA.table_number}` },
+            toTable: { id: bestTable.id, name: bestTable.table_name || `Tafel ${bestTable.table_number}` },
+            swapWith: { id: bestSwapSeat.member_id, name: getPersonName(bestSwapSeat.member_id, null) },
+            fromSeatId: moveSeat.id,
+            toSeatId: bestSwapSeat.id,
+            reason: `${dup.historicalMeetings > 0 ? `${dup.historicalMeetings}× eerder ontmoet. ` : ""}Minste overlap bij ${bestTable.table_name || `Tafel ${bestTable.table_number}`}.`,
+          });
+        }
+      }
+    }
+
+    return suggestions;
+  };
+
+  const executeSuggestions = async () => {
+    setExecuting(true);
+    try {
+      // Execute each swap: update member_id on both seats
+      for (const s of suggestions) {
+        if (s.toSeatId && s.swapWith) {
+          // Swap: movePerson goes to toSeatId, swapWith goes to fromSeatId
+          const { error: e1 } = await supabase.from("table_seats").update({ member_id: s.movePerson.id }).eq("id", s.toSeatId);
+          const { error: e2 } = await supabase.from("table_seats").update({ member_id: s.swapWith.id }).eq("id", s.fromSeatId);
+          if (e1) throw e1;
+          if (e2) throw e2;
+        }
+      }
+      toast.success(`${suggestions.length} wissel(s) uitgevoerd!`);
+      setDuplicates(null);
+      setSuggestions([]);
+      onRefresh();
+    } catch (err: any) {
+      toast.error(err.message || "Fout bij uitvoeren");
+    }
+    setExecuting(false);
+  };
+
+  const buildSnapshot = () => ({
+    rounds: rounds.map(round => ({
+      round_number: round.round_number,
+      name: round.name,
+      tables: (round.event_tables || []).map((table: any) => ({
+        table_number: table.table_number,
+        table_name: table.table_name,
+        capacity: table.capacity,
+        host_member_id: table.host_member_id,
+        seats: (table.table_seats || []).map((seat: any) => ({
+          member_id: seat.member_id,
+          guest_id: seat.guest_id,
+          seat_number: seat.seat_number,
+        })),
+      })),
+    })),
+  });
 
   const restoreVersion = async (version: any) => {
     setRestoring(true);
@@ -203,7 +384,6 @@ export default function SeatingVersions({
 
   const renderSnapshotPreview = (snapshot: any) => {
     if (!snapshot?.rounds) return <p className="text-muted-foreground text-sm">Geen snapshot data beschikbaar.</p>;
-
     return (
       <div className="space-y-4 max-h-[60vh] overflow-y-auto">
         {snapshot.rounds.map((round: any, ri: number) => (
@@ -248,7 +428,7 @@ export default function SeatingVersions({
         </Button>
       </div>
 
-      {/* Duplicate results */}
+      {/* Duplicate results + suggestions */}
       {duplicates !== null && (
         <Card className={cn(
           "border",
@@ -264,13 +444,19 @@ export default function SeatingVersions({
             </CardTitle>
           </CardHeader>
           {duplicates.length > 0 && (
-            <CardContent className="pt-0">
+            <CardContent className="pt-0 space-y-4">
+              {/* Duplicate list */}
               <div className="space-y-1.5">
                 {duplicates.map((dup, i) => (
-                  <div key={i} className="flex items-center gap-2 text-sm">
+                  <div key={i} className="flex flex-wrap items-center gap-2 text-sm">
                     <span className="font-medium">{dup.memberA.name}</span>
                     <span className="text-muted-foreground">&</span>
                     <span className="font-medium">{dup.memberB.name}</span>
+                    {dup.historicalMeetings > 0 && (
+                      <Badge variant="outline" className="text-xs text-amber-700 border-amber-300">
+                        {dup.historicalMeetings}× eerder ontmoet
+                      </Badge>
+                    )}
                     <span className="text-muted-foreground">→</span>
                     <div className="flex gap-1">
                       {dup.rounds.map((r, j) => (
@@ -280,6 +466,42 @@ export default function SeatingVersions({
                   </div>
                 ))}
               </div>
+
+              {/* Swap suggestions */}
+              {suggestions.length > 0 && (
+                <div className="border-t pt-3 space-y-3">
+                  <h4 className="text-sm font-semibold flex items-center gap-2">
+                    <ArrowRightLeft size={14} />
+                    Voorgestelde wissels
+                  </h4>
+                  <div className="space-y-2">
+                    {suggestions.map((s, i) => (
+                      <div key={i} className="flex flex-wrap items-center gap-2 text-sm p-2 rounded-md bg-background border">
+                        <Badge variant="secondary" className="text-xs">{s.roundLabel}</Badge>
+                        <span className="font-medium">{s.movePerson.name}</span>
+                        <span className="text-muted-foreground">{s.fromTable.name} →</span>
+                        <span className="font-medium">{s.toTable.name}</span>
+                        {s.swapWith && (
+                          <>
+                            <span className="text-muted-foreground">↔</span>
+                            <span className="font-medium">{s.swapWith.name}</span>
+                          </>
+                        )}
+                        <span className="text-xs text-muted-foreground ml-auto">{s.reason}</span>
+                      </div>
+                    ))}
+                  </div>
+                  <Button
+                    size="sm"
+                    onClick={executeSuggestions}
+                    disabled={executing}
+                    className="w-full sm:w-auto"
+                  >
+                    <Play size={14} className="mr-1" />
+                    {executing ? "Uitvoeren..." : `Alle ${suggestions.length} wissel(s) uitvoeren`}
+                  </Button>
+                </div>
+              )}
             </CardContent>
           )}
         </Card>
@@ -311,20 +533,10 @@ export default function SeatingVersions({
                       <span className={cn("text-xs px-2 py-1 rounded-full", v.status === "gepubliceerd" ? "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400" : "bg-muted text-muted-foreground")}>
                         {v.status}
                       </span>
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        className="h-7 px-2 text-xs"
-                        onClick={() => setViewingVersion(v)}
-                      >
+                      <Button size="sm" variant="ghost" className="h-7 px-2 text-xs" onClick={() => setViewingVersion(v)}>
                         <Eye size={13} className="mr-1" />Bekijk
                       </Button>
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        className="h-7 px-2 text-xs"
-                        onClick={() => setRestoreConfirm(v)}
-                      >
+                      <Button size="sm" variant="ghost" className="h-7 px-2 text-xs" onClick={() => setRestoreConfirm(v)}>
                         <RotateCcw size={13} className="mr-1" />Herstel
                       </Button>
                     </div>
