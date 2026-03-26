@@ -1,12 +1,13 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
-import { ClipboardPaste, Check, UserPlus, Loader2 } from "lucide-react";
+import { ClipboardPaste, Check, UserPlus, Loader2, Link2, X } from "lucide-react";
 import { toast } from "sonner";
+import SearchableSelect from "@/components/SearchableSelect";
 
 interface PasteAttendeesProps {
   eventId: string;
@@ -21,11 +22,21 @@ interface MatchResult {
   company?: string;
 }
 
+interface ProfileOption {
+  id: string;
+  first_name: string;
+  last_name: string;
+  company_name: string | null;
+}
+
 interface UnmatchedEntry {
   raw: string;
   firstName: string;
   lastName: string;
-  selected: boolean;
+  /** If set, this entry is manually linked to an existing profile */
+  linkedProfileId: string | null;
+  /** If true and not linked, create as new guest */
+  createAsGuest: boolean;
 }
 
 export default function PasteAttendees({ eventId, existingMemberIds, onDone }: PasteAttendeesProps) {
@@ -34,6 +45,7 @@ export default function PasteAttendees({ eventId, existingMemberIds, onDone }: P
   const [step, setStep] = useState<"paste" | "results">("paste");
   const [matched, setMatched] = useState<MatchResult[]>([]);
   const [unmatched, setUnmatched] = useState<UnmatchedEntry[]>([]);
+  const [allProfiles, setAllProfiles] = useState<ProfileOption[]>([]);
   const [processing, setProcessing] = useState(false);
   const [saving, setSaving] = useState(false);
 
@@ -42,6 +54,7 @@ export default function PasteAttendees({ eventId, existingMemberIds, onDone }: P
     setStep("paste");
     setMatched([]);
     setUnmatched([]);
+    setAllProfiles([]);
   };
 
   const normalize = (s: string) => s.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim();
@@ -62,25 +75,21 @@ export default function PasteAttendees({ eventId, existingMemberIds, onDone }: P
       .from("profiles")
       .select("id, first_name, last_name, company_name");
 
-    const allProfiles = profiles || [];
+    const fetchedProfiles = profiles || [];
+    setAllProfiles(fetchedProfiles);
+
     const matchedList: MatchResult[] = [];
     const unmatchedList: UnmatchedEntry[] = [];
 
     for (const line of lines) {
       const norm = normalize(line);
-      // Try full name match
-      const match = allProfiles.find(p => {
-        const full = normalize(`${p.first_name} ${p.last_name}`);
-        return full === norm;
-      }) || allProfiles.find(p => {
-        // Try last name only if unique
-        return normalize(p.last_name) === norm;
-      }) || allProfiles.find(p => {
-        // Fuzzy: check if input contains both first and last
-        const fn = normalize(p.first_name);
-        const ln = normalize(p.last_name);
-        return fn.length > 1 && ln.length > 1 && norm.includes(fn) && norm.includes(ln);
-      });
+      const match = fetchedProfiles.find(p => normalize(`${p.first_name} ${p.last_name}`) === norm)
+        || fetchedProfiles.find(p => normalize(p.last_name) === norm)
+        || fetchedProfiles.find(p => {
+          const fn = normalize(p.first_name);
+          const ln = normalize(p.last_name);
+          return fn.length > 1 && ln.length > 1 && norm.includes(fn) && norm.includes(ln);
+        });
 
       if (match && !existingMemberIds.includes(match.id) && !matchedList.some(m => m.profileId === match.id)) {
         matchedList.push({
@@ -91,9 +100,13 @@ export default function PasteAttendees({ eventId, existingMemberIds, onDone }: P
         });
       } else if (!match) {
         const parts = line.split(/\s+/);
-        const firstName = parts[0] || line;
-        const lastName = parts.slice(1).join(" ") || "";
-        unmatchedList.push({ raw: line, firstName, lastName, selected: false });
+        unmatchedList.push({
+          raw: line,
+          firstName: parts[0] || line,
+          lastName: parts.slice(1).join(" ") || "",
+          linkedProfileId: null,
+          createAsGuest: false,
+        });
       }
     }
 
@@ -103,25 +116,54 @@ export default function PasteAttendees({ eventId, existingMemberIds, onDone }: P
     setProcessing(false);
   };
 
-  const toggleUnmatched = (idx: number) => {
-    setUnmatched(prev => prev.map((u, i) => i === idx ? { ...u, selected: !u.selected } : u));
+  // Build profile options for manual linking, excluding already-matched and already-registered members
+  const profileOptions = useMemo(() => {
+    const usedIds = new Set([
+      ...existingMemberIds,
+      ...matched.map(m => m.profileId),
+      ...unmatched.filter(u => u.linkedProfileId).map(u => u.linkedProfileId!),
+    ]);
+    return allProfiles
+      .filter(p => !usedIds.has(p.id))
+      .map(p => ({
+        value: p.id,
+        label: `${p.first_name} ${p.last_name}${p.company_name ? ` (${p.company_name})` : ""}`,
+      }));
+  }, [allProfiles, existingMemberIds, matched, unmatched]);
+
+  const linkProfile = (idx: number, profileId: string) => {
+    setUnmatched(prev => prev.map((u, i) => i === idx ? { ...u, linkedProfileId: profileId || null, createAsGuest: false } : u));
   };
 
-  const selectAllUnmatched = () => {
-    const allSelected = unmatched.every(u => u.selected);
-    setUnmatched(prev => prev.map(u => ({ ...u, selected: !allSelected })));
+  const unlinkProfile = (idx: number) => {
+    setUnmatched(prev => prev.map((u, i) => i === idx ? { ...u, linkedProfileId: null } : u));
   };
+
+  const toggleCreateAsGuest = (idx: number) => {
+    setUnmatched(prev => prev.map((u, i) => i === idx ? { ...u, createAsGuest: !u.createAsGuest, linkedProfileId: null } : u));
+  };
+
+  const selectAllAsGuest = () => {
+    const unlinked = unmatched.filter(u => !u.linkedProfileId);
+    const allSelected = unlinked.length > 0 && unlinked.every(u => u.createAsGuest);
+    setUnmatched(prev => prev.map(u => u.linkedProfileId ? u : { ...u, createAsGuest: !allSelected }));
+  };
+
+  const totalToAdd = matched.length
+    + unmatched.filter(u => u.linkedProfileId).length
+    + unmatched.filter(u => !u.linkedProfileId && u.createAsGuest).length;
 
   const saveAll = async () => {
     setSaving(true);
     try {
-      const selectedGuests = unmatched.filter(u => u.selected);
+      const manuallyLinkedIds = unmatched.filter(u => u.linkedProfileId).map(u => u.linkedProfileId!);
+      const guestsToCreate = unmatched.filter(u => !u.linkedProfileId && u.createAsGuest);
 
       const res = await supabase.functions.invoke("bulk-add-attendees", {
         body: {
           event_id: eventId,
-          matched_ids: matched.map(m => m.profileId),
-          guests: selectedGuests.map(g => ({ first_name: g.firstName, last_name: g.lastName })),
+          matched_ids: [...matched.map(m => m.profileId), ...manuallyLinkedIds],
+          guests: guestsToCreate.map(g => ({ first_name: g.firstName, last_name: g.lastName })),
         },
       });
 
@@ -131,15 +173,10 @@ export default function PasteAttendees({ eventId, existingMemberIds, onDone }: P
       const added = Number(res.data?.added ?? 0);
       const failed = Array.isArray(res.data?.failed) ? res.data.failed : [];
 
-      if (added > 0) {
-        toast.success(`${added} deelnemer${added !== 1 ? "s" : ""} toegevoegd`);
-      }
-      if (failed.length > 0) {
-        toast.error(`${failed.length} naam/namen konden niet als gast-lid worden aangemaakt`);
-      }
-      if (added === 0 && failed.length === 0) {
-        toast.error("Er zijn geen deelnemers toegevoegd");
-      }
+      if (added > 0) toast.success(`${added} deelnemer${added !== 1 ? "s" : ""} toegevoegd`);
+      if (failed.length > 0) toast.error(`${failed.length} naam/namen konden niet worden aangemaakt`);
+      if (added === 0 && failed.length === 0) toast.error("Er zijn geen deelnemers toegevoegd");
+
       reset();
       setOpen(false);
       onDone();
@@ -209,27 +246,52 @@ export default function PasteAttendees({ eventId, existingMemberIds, onDone }: P
                   <h3 className="text-sm font-semibold text-destructive">
                     Niet gevonden ({unmatched.length})
                   </h3>
-                  <Button size="sm" variant="ghost" onClick={selectAllUnmatched} className="text-xs h-7">
-                    {unmatched.every(u => u.selected) ? "Deselecteer alles" : "Selecteer alles"}
+                  <Button size="sm" variant="ghost" onClick={selectAllAsGuest} className="text-xs h-7">
+                    {unmatched.filter(u => !u.linkedProfileId).every(u => u.createAsGuest) ? "Deselecteer alles" : "Allen als gast aanmaken"}
                   </Button>
                 </div>
-                <div className="border rounded-md divide-y max-h-48 overflow-y-auto">
+                <div className="border rounded-md divide-y max-h-[280px] overflow-y-auto">
                   {unmatched.map((u, idx) => (
-                    <label key={idx} className="flex items-center gap-3 px-3 py-2 text-sm cursor-pointer hover:bg-muted/50">
-                      <Checkbox
-                        checked={u.selected}
-                        onCheckedChange={() => toggleUnmatched(idx)}
-                      />
-                      <div className="flex-1">
-                        <span className="font-medium">{u.raw}</span>
-                        <span className="text-muted-foreground text-xs ml-2">→ {u.firstName} {u.lastName}</span>
-                      </div>
-                    </label>
+                    <div key={idx} className="px-3 py-2.5 space-y-1.5">
+                      <div className="text-sm font-medium">{u.raw}</div>
+                      {u.linkedProfileId ? (
+                        <div className="flex items-center gap-1.5">
+                          <Link2 size={12} className="text-green-600 shrink-0" />
+                          <span className="text-xs text-green-700 flex-1 truncate">
+                            Gekoppeld aan: {allProfiles.find(p => p.id === u.linkedProfileId)
+                              ? `${allProfiles.find(p => p.id === u.linkedProfileId)!.first_name} ${allProfiles.find(p => p.id === u.linkedProfileId)!.last_name}`
+                              : u.linkedProfileId}
+                          </span>
+                          <Button size="sm" variant="ghost" className="h-6 w-6 p-0" onClick={() => unlinkProfile(idx)}>
+                            <X size={12} />
+                          </Button>
+                        </div>
+                      ) : (
+                        <div className="flex items-center gap-2">
+                          <div className="flex-1 min-w-0">
+                            <SearchableSelect
+                              options={profileOptions}
+                              value=""
+                              onValueChange={(val) => linkProfile(idx, val)}
+                              placeholder="Koppel aan bestaand lid..."
+                              emptyText="Geen leden gevonden"
+                            />
+                          </div>
+                          <label className="flex items-center gap-1.5 cursor-pointer shrink-0">
+                            <Checkbox
+                              checked={u.createAsGuest}
+                              onCheckedChange={() => toggleCreateAsGuest(idx)}
+                            />
+                            <span className="text-xs text-muted-foreground whitespace-nowrap">Nieuw</span>
+                          </label>
+                        </div>
+                      )}
+                    </div>
                   ))}
                 </div>
                 <p className="text-xs text-muted-foreground flex items-center gap-1">
                   <UserPlus size={12} />
-                  Geselecteerde namen worden als gast-lid aangemaakt en direct aan dit event gekoppeld.
+                  Koppel handmatig aan een bestaand lid, of vink "Nieuw" aan om als gast-lid aan te maken.
                 </p>
               </div>
             )}
@@ -241,13 +303,13 @@ export default function PasteAttendees({ eventId, existingMemberIds, onDone }: P
             )}
 
             <div className="flex gap-2">
-              <Button variant="outline" onClick={() => { setStep("paste"); }} className="flex-1">Terug</Button>
+              <Button variant="outline" onClick={() => setStep("paste")} className="flex-1">Terug</Button>
               <Button
                 onClick={saveAll}
-                disabled={saving || (matched.length === 0 && !unmatched.some(u => u.selected))}
+                disabled={saving || totalToAdd === 0}
                 className="flex-1"
               >
-                {saving ? <><Loader2 size={14} className="mr-1 animate-spin" />Opslaan...</> : `Toevoegen (${matched.length + unmatched.filter(u => u.selected).length})`}
+                {saving ? <><Loader2 size={14} className="mr-1 animate-spin" />Opslaan...</> : `Toevoegen (${totalToAdd})`}
               </Button>
             </div>
           </div>
