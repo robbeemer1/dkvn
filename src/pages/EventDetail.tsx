@@ -14,7 +14,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Calendar } from "@/components/ui/calendar";
 import { MembershipBadge, StatusBadge, RegionBadge } from "@/components/Badges";
-import { ArrowLeft, Plus, UserPlus, Sparkles, CalendarIcon, Save, Pencil, Trash2, RotateCcw, X, Printer } from "lucide-react";
+import { ArrowLeft, Plus, UserPlus, Sparkles, CalendarIcon, Save, Pencil, Trash2, RotateCcw, X, Printer, FileSpreadsheet } from "lucide-react";
 import { toast } from "sonner";
 import { format } from "date-fns";
 import { nl } from "date-fns/locale";
@@ -25,6 +25,7 @@ import PasteAttendees from "@/components/PasteAttendees";
 import SearchableSelect from "@/components/SearchableSelect";
 import ConfirmDialog from "@/components/ConfirmDialog";
 import { printAttendeesPdf, printSeatingPdf } from "@/lib/printPdf";
+import { exportAttendeesExcel, exportSeatingExcel } from "@/lib/exportExcel";
 import SeatingVersions from "@/components/SeatingVersions";
 
 export default function EventDetailPage() {
