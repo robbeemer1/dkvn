@@ -55,7 +55,10 @@ serve(async (req) => {
 
     // Determine number of tables
     const numTables = num_tables || Math.ceil(totalAttendees / 8);
-    const tableSize = Math.ceil(totalAttendees / numTables);
+    // Even distribution: e.g. 38 people / 6 tables = 2 tables of 7, 4 tables of 6
+    const baseSize = Math.floor(totalAttendees / numTables);
+    const remainder = totalAttendees % numTables;
+    const tableSizes: number[] = Array.from({ length: numTables }, (_, i) => i < remainder ? baseSize + 1 : baseSize);
 
     // Parse table_hosts and table_fixed_members
     const hostMap: Record<number, string> = {};
