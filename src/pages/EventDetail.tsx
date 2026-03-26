@@ -599,7 +599,7 @@ export default function EventDetailPage() {
         <TabsContent value="seating" className="space-y-4">
            <div className="flex gap-2">
             <Button size="sm" onClick={addRound}><Plus size={14} className="mr-1" />Ronde toevoegen</Button>
-            {rounds.length > 0 && (
+            {rounds.length > 0 && (<>
               <Button size="sm" variant="outline" onClick={() => {
                 const eventInfo = `${event.regions?.name || ""} · ${new Date(event.event_date).toLocaleDateString("nl-NL", { weekday: "long", day: "numeric", month: "long", year: "numeric" })}${event.location_name ? ` · ${event.location_name}` : ""}`;
                 printSeatingPdf(event.title, eventInfo, rounds);
@@ -612,7 +612,7 @@ export default function EventDetailPage() {
               }}>
                 <FileSpreadsheet size={14} className="mr-1" />Excel
               </Button>
-            )}
+            </>)}
           </div>
 
           {/* Table configuration dialog */}
