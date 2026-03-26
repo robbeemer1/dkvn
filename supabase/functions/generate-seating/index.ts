@@ -55,7 +55,10 @@ serve(async (req) => {
 
     // Determine number of tables
     const numTables = num_tables || Math.ceil(totalAttendees / 8);
-    const tableSize = Math.ceil(totalAttendees / numTables);
+    // Even distribution: e.g. 38 people / 6 tables = 2 tables of 7, 4 tables of 6
+    const baseSize = Math.floor(totalAttendees / numTables);
+    const remainder = totalAttendees % numTables;
+    const tableSizes: number[] = Array.from({ length: numTables }, (_, i) => i < remainder ? baseSize + 1 : baseSize);
 
     // Parse table_hosts and table_fixed_members
     const hostMap: Record<number, string> = {};
@@ -126,7 +129,7 @@ serve(async (req) => {
         let bestTable = 0;
         let bestScore = Infinity;
         for (let t = 0; t < numTables; t++) {
-          if (tables[t].length >= tableSize) continue;
+          if (tables[t].length >= tableSizes[t]) continue;
           let score = 0;
           for (const existing of tables[t]) {
             if (!person.startsWith("guest:") && !existing.startsWith("guest:")) {
@@ -178,7 +181,7 @@ serve(async (req) => {
         const hostId = hostMap[t] || null;
         const { data: tableRow } = await supabase.from("event_tables").insert({
           round_id: round.id, table_number: t + 1, table_name: `Tafel ${t + 1}`,
-          capacity: tableSize, host_member_id: hostId,
+          capacity: tableSizes[t], host_member_id: hostId,
         }).select().single();
 
         if (tableRow) {
