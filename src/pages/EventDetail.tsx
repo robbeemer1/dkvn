@@ -480,6 +480,12 @@ export default function EventDetailPage() {
             }}>
               <Printer size={14} className="mr-1" />PDF
             </Button>
+            <Button size="sm" variant="outline" onClick={() => {
+              const eventInfo = `${event.regions?.name || ""} · ${new Date(event.event_date).toLocaleDateString("nl-NL", { weekday: "long", day: "numeric", month: "long", year: "numeric" })}${event.location_name ? ` · ${event.location_name}` : ""}`;
+              exportAttendeesExcel(event.title, eventInfo, registrations, guests);
+            }}>
+              <FileSpreadsheet size={14} className="mr-1" />Excel
+            </Button>
           </div>
 
           <div className="relative max-w-sm">
@@ -599,6 +605,12 @@ export default function EventDetailPage() {
                 printSeatingPdf(event.title, eventInfo, rounds);
               }}>
                 <Printer size={14} className="mr-1" />PDF
+              </Button>
+              <Button size="sm" variant="outline" onClick={() => {
+                const eventInfo = `${event.regions?.name || ""} · ${new Date(event.event_date).toLocaleDateString("nl-NL", { weekday: "long", day: "numeric", month: "long", year: "numeric" })}${event.location_name ? ` · ${event.location_name}` : ""}`;
+                exportSeatingExcel(event.title, eventInfo, rounds);
+              }}>
+                <FileSpreadsheet size={14} className="mr-1" />Excel
               </Button>
             )}
           </div>
