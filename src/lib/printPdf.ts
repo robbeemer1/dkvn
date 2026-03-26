@@ -90,37 +90,49 @@ export function printAttendeesPdf(
   registrations: any[],
   guests: any[]
 ) {
+  const activeStatuses = ["aangemeld", "bevestigd", "aanwezig"];
+
+  const sortByName = (a: any, b: any, getFirst: (x: any) => string, getLast: (x: any) => string) => {
+    const cmp = getFirst(a).toLowerCase().localeCompare(getFirst(b).toLowerCase());
+    if (cmp !== 0) return cmp;
+    return getLast(a).toLowerCase().localeCompare(getLast(b).toLowerCase());
+  };
+
+  const regFirst = (r: any) => r.profiles?.first_name || "";
+  const regLast = (r: any) => r.profiles?.last_name || "";
+  const guestFirst = (g: any) => g.first_name || "";
+  const guestLast = (g: any) => g.last_name || "";
+
+  const activeRegs = registrations.filter(r => activeStatuses.includes(r.status)).sort((a, b) => sortByName(a, b, regFirst, regLast));
+  const inactiveRegs = registrations.filter(r => !activeStatuses.includes(r.status)).sort((a, b) => sortByName(a, b, regFirst, regLast));
+  const activeGuests = guests.filter(g => activeStatuses.includes(g.status)).sort((a, b) => sortByName(a, b, guestFirst, guestLast));
+  const inactiveGuests = guests.filter(g => !activeStatuses.includes(g.status)).sort((a, b) => sortByName(a, b, guestFirst, guestLast));
+
   let html = "";
 
-  // Members table
-  if (registrations.length > 0) {
-    html += `<div class="section-title">Leden (${registrations.length})</div>`;
+  const renderRegTable = (items: any[], label: string) => {
+    if (items.length === 0) return;
+    html += `<div class="section-title">${label} (${items.length})</div>`;
     html += `<table><thead><tr><th>#</th><th>Naam</th><th>Bedrijf</th><th>Niveau</th><th>Regio</th><th>Status</th></tr></thead><tbody>`;
-    registrations
-      .sort((a, b) => {
-        const nameA = `${a.profiles?.last_name} ${a.profiles?.first_name}`.toLowerCase();
-        const nameB = `${b.profiles?.last_name} ${b.profiles?.first_name}`.toLowerCase();
-        return nameA.localeCompare(nameB);
-      })
-      .forEach((r, i) => {
-        const level = r.profiles?.membership_level || "gast";
-        html += `<tr>
-          <td>${i + 1}</td>
-          <td>${r.profiles?.first_name || ""} ${r.profiles?.last_name || ""}</td>
-          <td>${r.profiles?.company_name || "—"}</td>
-          <td><span class="badge badge-${level}">${level}</span></td>
-          <td>${r.profiles?.regions?.name || "—"}</td>
-          <td><span class="status status-${r.status}">${r.status.replace("_", " ")}</span></td>
-        </tr>`;
-      });
+    items.forEach((r, i) => {
+      const level = r.profiles?.membership_level || "gast";
+      html += `<tr>
+        <td>${i + 1}</td>
+        <td>${r.profiles?.first_name || ""} ${r.profiles?.last_name || ""}</td>
+        <td>${r.profiles?.company_name || "—"}</td>
+        <td><span class="badge badge-${level}">${level}</span></td>
+        <td>${r.profiles?.regions?.name || "—"}</td>
+        <td><span class="status status-${r.status}">${r.status.replace("_", " ")}</span></td>
+      </tr>`;
+    });
     html += `</tbody></table>`;
-  }
+  };
 
-  // Guests table
-  if (guests.length > 0) {
-    html += `<div class="section-title">Gasten (${guests.length})</div>`;
+  const renderGuestTable = (items: any[], label: string) => {
+    if (items.length === 0) return;
+    html += `<div class="section-title">${label} (${items.length})</div>`;
     html += `<table><thead><tr><th>#</th><th>Naam</th><th>Bedrijf</th><th>E-mail</th><th>Status</th></tr></thead><tbody>`;
-    guests.forEach((g, i) => {
+    items.forEach((g, i) => {
       html += `<tr>
         <td>${i + 1}</td>
         <td>${g.first_name} ${g.last_name}</td>
@@ -130,10 +142,22 @@ export function printAttendeesPdf(
       </tr>`;
     });
     html += `</tbody></table>`;
+  };
+
+  // Active section
+  renderRegTable(activeRegs, "Leden — Aangemeld");
+  renderGuestTable(activeGuests, "Gasten — Aangemeld");
+
+  // Inactive section
+  if (inactiveRegs.length > 0 || inactiveGuests.length > 0) {
+    html += `<div style="margin-top:24px;padding-top:12px;border-top:2px solid #ddd;"></div>`;
+    renderRegTable(inactiveRegs, "Leden — Afgemeld");
+    renderGuestTable(inactiveGuests, "Gasten — Afgemeld");
   }
 
-  const total = registrations.length + guests.length;
-  html += `<p style="margin-top:8px;font-size:11px;color:#666;">Totaal: ${total} deelnemers</p>`;
+  const totalActive = activeRegs.length + activeGuests.length;
+  const totalInactive = inactiveRegs.length + inactiveGuests.length;
+  html += `<p style="margin-top:8px;font-size:11px;color:#666;">Totaal aangemeld: ${totalActive} · Afgemeld: ${totalInactive} · Totaal: ${totalActive + totalInactive}</p>`;
 
   printPdf(`Deelnemers — ${eventTitle}`, eventInfo, html);
 }
