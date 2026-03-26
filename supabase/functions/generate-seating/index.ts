@@ -129,7 +129,7 @@ serve(async (req) => {
         let bestTable = 0;
         let bestScore = Infinity;
         for (let t = 0; t < numTables; t++) {
-          if (tables[t].length >= tableSize) continue;
+          if (tables[t].length >= tableSizes[t]) continue;
           let score = 0;
           for (const existing of tables[t]) {
             if (!person.startsWith("guest:") && !existing.startsWith("guest:")) {
