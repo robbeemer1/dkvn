@@ -181,7 +181,7 @@ serve(async (req) => {
         const hostId = hostMap[t] || null;
         const { data: tableRow } = await supabase.from("event_tables").insert({
           round_id: round.id, table_number: t + 1, table_name: `Tafel ${t + 1}`,
-          capacity: tableSize, host_member_id: hostId,
+          capacity: tableSizes[t], host_member_id: hostId,
         }).select().single();
 
         if (tableRow) {
