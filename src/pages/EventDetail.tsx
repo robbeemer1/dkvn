@@ -210,10 +210,20 @@ export default function EventDetailPage() {
     else { toast.success("Ronde verwijderd"); fetchAll(); }
   };
 
-  const removeSeat = async (seatId: string) => {
+  const removeSeat = async (seatId: string, table?: any, memberId?: string | null) => {
     const { error } = await supabase.from("table_seats").delete().eq("id", seatId);
+    if (error) { toast.error(error.message); return; }
+    if (table && memberId && table.host_member_id === memberId) {
+      await supabase.from("event_tables").update({ host_member_id: null }).eq("id", table.id);
+      toast.info("Voorzitter verwijderd — kies een nieuwe voorzitter voor deze tafel.");
+    }
+    fetchAll();
+  };
+
+  const setTableHost = async (tableId: string, memberId: string) => {
+    const { error } = await supabase.from("event_tables").update({ host_member_id: memberId || null }).eq("id", tableId);
     if (error) toast.error(error.message);
-    else fetchAll();
+    else { toast.success(memberId ? "Voorzitter ingesteld" : "Voorzitter verwijderd"); fetchAll(); }
   };
 
   const addSeatToTable = async (tableId: string, memberId: string) => {
@@ -812,10 +822,28 @@ export default function EventDetailPage() {
                               <span className="ml-2 text-xs bg-primary/10 text-primary px-1.5 py-0.5 rounded">Voorzitter</span>
                             )}
                           </h4>
+                          {table.table_seats?.some((s: any) => s.member_id) && (
+                            <div className="mb-2">
+                              <SearchableSelect
+                                value={table.host_member_id || ""}
+                                onValueChange={v => setTableHost(table.id, v)}
+                                placeholder="Kies voorzitter"
+                                emptyText="Geen deelnemers aan deze tafel."
+                                options={table.table_seats
+                                  .filter((s: any) => s.member_id && s.profiles)
+                                  .map((s: any) => ({ value: s.member_id, label: `★ ${s.profiles.first_name} ${s.profiles.last_name}`.trim() }))}
+                              />
+                            </div>
+                          )}
                           {table.table_seats?.length > 0 ? (
                             <ul className="space-y-1 text-sm">
-                              {table.table_seats
-                                .sort((a: any, b: any) => (a.seat_number || 0) - (b.seat_number || 0))
+                              {[...table.table_seats]
+                                .sort((a: any, b: any) => {
+                                  const ah = a.member_id && a.member_id === table.host_member_id ? 0 : 1;
+                                  const bh = b.member_id && b.member_id === table.host_member_id ? 0 : 1;
+                                  if (ah !== bh) return ah - bh;
+                                  return (a.seat_number || 0) - (b.seat_number || 0);
+                                })
                                 .map((seat: any) => (
                                 <li key={seat.id} className={cn("flex items-center justify-between group", seat.member_id === table.host_member_id ? "text-foreground font-semibold" : "text-muted-foreground")}>
                                   <span>
@@ -826,7 +854,7 @@ export default function EventDetailPage() {
                                     type="button"
                                     className="opacity-0 group-hover:opacity-100 text-destructive hover:text-destructive/80 transition-opacity p-0.5"
                                     title="Verwijder van tafel"
-                                    onClick={() => removeSeat(seat.id)}
+                                    onClick={() => removeSeat(seat.id, table, seat.member_id)}
                                   >
                                     <X size={12} />
                                   </button>
