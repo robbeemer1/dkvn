@@ -210,10 +210,20 @@ export default function EventDetailPage() {
     else { toast.success("Ronde verwijderd"); fetchAll(); }
   };
 
-  const removeSeat = async (seatId: string) => {
+  const removeSeat = async (seatId: string, table?: any, memberId?: string | null) => {
     const { error } = await supabase.from("table_seats").delete().eq("id", seatId);
+    if (error) { toast.error(error.message); return; }
+    if (table && memberId && table.host_member_id === memberId) {
+      await supabase.from("event_tables").update({ host_member_id: null }).eq("id", table.id);
+      toast.info("Voorzitter verwijderd — kies een nieuwe voorzitter voor deze tafel.");
+    }
+    fetchAll();
+  };
+
+  const setTableHost = async (tableId: string, memberId: string) => {
+    const { error } = await supabase.from("event_tables").update({ host_member_id: memberId || null }).eq("id", tableId);
     if (error) toast.error(error.message);
-    else fetchAll();
+    else { toast.success(memberId ? "Voorzitter ingesteld" : "Voorzitter verwijderd"); fetchAll(); }
   };
 
   const addSeatToTable = async (tableId: string, memberId: string) => {
